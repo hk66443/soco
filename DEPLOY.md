@@ -163,13 +163,29 @@ scp -r ./soco root@<SERVER_IP>:/root/so
 [7/7] 真实握手验证     3 个用户真实转发（可 --no-probe 跳过）
 ```
 
-非交互写法（批量/自动化）：
+非交互写法（脚本 / 批量，全部可用）：
 
 ```bash
-/root/so/console/so-console install --node-id 12 --type ss --url https://panel.example.com
-/root/so/console/so-console install --node-id 13 --type vless --url https://p2.example.com --webapi-key <面板的key>
-/root/so/console/so-console install --node-id 12 --type ss --url https://panel.example.com --dry-run
+# 最常用：三项写在参数里，一条命令装完
+so-console install --node-id 12 --type ss --url https://panel.example.com
+
+# 第二个机场（另一台面板）
+so-console install --node-id 13 --type vless --url https://p2.example.com
+
+# 面板已经给了一对 key（覆盖自动生成的那串）
+so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <面板给的key>
+
+# 只预演，不改系统（打印 7 步计划）
+so-console install --node-id 12 --type ss --url https://panel.example.com --dry-run
+
+# 先装起来，跳过真实握手验证（网络/面板还没通的时候）
+so-console install --node-id 12 --type ss --url https://panel.example.com --no-probe
+
+# 直接用实例名部署（等价于 inst new jp1 …）
+so-console install --node-id 12 --type ss --url https://panel.example.com --name jp1
 ```
+
+想用菜单操作就不用带参数：`so-console` → 选 `1 install`（菜单见 [README.md](README.md) §1.2 / [CONSOLE.md](CONSOLE.md) §7）。
 
 > **443 端口**：sink 监听 `38443`，`127.0.0.1:443` 用 nft dnat 指到它，所以**对外 443 是空的**，可以给网站/证书用。
 
@@ -228,11 +244,21 @@ journalctl -u soco --since '-30min' -o cat | grep -c 'auth failed'    # 期望 0
 ## 9. 多实例（一台机多个机场）
 
 ```bash
-/root/so/console/so-console inst                                   # 列表：实例/节点ID/协议/状态/重启
-/root/so/console/so-console inst new                               # 向导（实例名 → 三项）
+# 列表：实例 / 节点ID / 协议 / 状态 / 重启次数
+/root/so/console/so-console inst
+
+# 向导：实例名 → 节点 ID → 协议 → 面板地址
+/root/so/console/so-console inst new
+
+# 一行式
 /root/so/console/so-console inst new jp1 --node-id 21 --type vless --url https://p2.example.com
-/root/so/console/so-console inst start jp1                         # 也可 stop / restart / log
-/root/so/console/so-console inst remove jp1                        # 停服 + 删配置（二次确认）
+
+# 生命周期
+/root/so/console/so-console inst start   jp1
+/root/so/console/so-console inst stop    jp1
+/root/so/console/so-console inst restart jp1
+/root/so/console/so-console inst log     jp1
+/root/so/console/so-console inst remove  jp1
 ```
 
 | 约束 | 原因 |
