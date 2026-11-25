@@ -9,17 +9,17 @@
   + 部署与运维脚本、补丁清单、证据
 ```
 
-两个架构**分开两条路径**，互不依赖，别交叉照搬：
+两个架构**共用同一条一键命令**，装的时候在向导里选协议即可：
 
 | | amd64（x86_64） | arm64（aarch64） |
 |---|---|---|
-| 典型协议 | Shadowsocks 2022 | VLESS + REALITY |
+| 协议（向导里选） | `1` = Shadowsocks 2022 | `2` = VLESS + REALITY |
 | 二进制 | 53 区域补丁版 | variantE（变体链生成） |
 | 适配层 | `LD_PRELOAD=libsoco.so`（必需） | 同名 aarch64 版 |
-| 分流 `routes.toml` | 通常不用 | 常用（内置读取，控制台只读查看） |
+| 分流 `routes.toml` | 通常不用 | 常用（控制台只读查看） |
 | 内存 | ≥1 GB | ≥2 GB |
 
-> 部署细节：[DEPLOY.md](DEPLOY.md)　控制台命令手册：[CONSOLE.md](CONSOLE.md)　占位符：[SECURITY.md](SECURITY.md)
+> 细节：[DEPLOY.md](DEPLOY.md)（完整流程 / 回滚 / 故障表）　[CONSOLE.md](CONSOLE.md)（命令行手册）　[SECURITY.md](SECURITY.md)（占位符）
 
 ---
 
@@ -28,7 +28,7 @@
 | 项 | 要求 |
 |---|---|
 | 系统 | Debian 11/12/13（Ubuntu 22.04+ 亦可），systemd，root |
-| 架构 | `x86_64` 或 `aarch64`（`uname -m` 确认） |
+| 架构 | `x86_64` 或 `aarch64`（`uname -m` 确认，向导里选协议） |
 | 内存 | amd64 ≥1 GB；arm64 ≥2 GB |
 | 端口 | 业务端口由面板下发；SS2022 要放行 **TCP+UDP** |
 | 面板 | 已在该机器建好节点，拿到**节点 ID** |
@@ -40,39 +40,37 @@
 
 ## 1. 一键部署（amd64 / arm64 通用）
 
-### 1.1 三步上线
+### 1.1 一条命令：下载项目 → 直接进交互控制台
 
 ```bash
-# ① 上传项目（只传项目本身）
-scp -r ./soco root@<你的服务器>:/root/so
-
-# ② 一键安装：向导只问三项 —— 节点 ID / 协议 / 面板地址
-/root/so/console/so-console install
-
-# ③ 验证：3 个用户真实握手 + 全量自检
-/root/so/console/so-console probe 3
-/root/so/console/so-console doctor
+bash <(curl -fsSL https://raw.githubusercontent.com/hk66443/soco/main/install.sh)
 ```
 
-`install` 会依次做完 7 件事（幂等，重复执行 = 修复）：
+它只做三件事，然后把你丢进控制台：
 
 ```
-[1/7] 环境预检          root / systemctl / ss / nft / curl / openssl / 二进制
-[2/7] 目录与二进制       /usr/local/soco + licence/，权限 0755 / 0600
-[3/7] 写入配置（固定参数）  log_level=error（只记错误）
-[4/7] 授权 sink         自签证书 + hosts 4 条 + sink 38443
-[5/7] systemd 单元       5 个 + daemon-reload + enable
-[6/7] 启动与状态         active / pid / restarts / 业务端口
-[7/7] 真实握手验证       3 个用户真实转发（--no-probe 可跳过）
+== 拉取 hk66443/soco@main → /root/so
+== 项目就绪：/root/so
+== 进入控制台（菜单里选 1 install 开始安装）
+```
+
+等价写法（管道）与带参数（跳过菜单、直接装）：
+
+```bash
+# 管道
+curl -fsSL https://raw.githubusercontent.com/hk66443/soco/main/install.sh | bash
+
+# 下载完直接按参数安装（不进菜单）
+curl -fsSL https://raw.githubusercontent.com/hk66443/soco/main/install.sh | bash -s -- install --node-id 12 --type ss --url https://panel.example.com
+
+# 项目已经在机器上了：直接进控制台
+/root/so/console/so-console
 ```
 
 ### 1.2 交互控制台
 
-不带参数运行就是控制台（选编号，或在 `so>` 下直接敲任意命令）：
-
-```bash
-/root/so/console/so-console
-```
+进去以后就是菜单：选 `1 install`，向导只问三项（**节点 ID / 协议 / 面板地址**），其余全部固定自动完成。
+菜单里也能直接敲任意命令，例如 `so> probe 3`、`so> inst new jp1 …`。
 
 ```
 ╭─────────────────────────────────────────────────────────────
@@ -101,7 +99,19 @@ scp -r ./soco root@<你的服务器>:/root/so
   so> 
 ```
 
-### 1.3 一行式（脚本 / 批量）
+安装（菜单 `1`）会依次做完 7 步，幂等，重复执行 = 修复：
+
+```
+[1/7] 环境预检           root / systemctl / ss / nft / curl / openssl / 二进制
+[2/7] 目录与二进制        /usr/local/soco + licence/，权限 0755 / 0600
+[3/7] 写入配置（固定参数）   log_level=error（只记错误）
+[4/7] 授权 sink          自签证书 + hosts 4 条 + sink 38443
+[5/7] systemd 单元        5 个 + daemon-reload + enable
+[6/7] 启动与状态          active / pid / restarts / 业务端口
+[7/7] 真实握手验证        3 个用户真实转发（--no-probe 可跳过）
+```
+
+### 1.3 一行式（脚本 / 批量，不进菜单）
 
 ```bash
 # 最常用：三项写在参数里，一条命令装完
@@ -123,6 +133,12 @@ so-console install --node-id 12 --type ss --url https://panel.example.com --no-p
 so-console install --node-id 12 --type ss --url https://panel.example.com --name jp1
 ```
 
+`so-console` = `/root/so/console/so-console`，可做软链：
+
+```bash
+ln -sf /root/so/console/so-console /usr/local/bin/so-console
+```
+
 ### 1.4 谁填什么
 
 | 项 | 值 | 谁负责 |
@@ -138,81 +154,25 @@ so-console install --node-id 12 --type ss --url https://panel.example.com --name
 | systemd 单元 | 主服务 / `soco@.service` / sink / nft / watchdog | **自动** |
 | 业务端口 | 面板下发，控制台自动探测 | **自动** |
 
-> 自动生成的那串密钥要填回面板的 `webapi_key` 与 `so**_key`（两边不一致就拉不到用户）；
+> 自动生成的那串密钥要填回面板的 `webapi_key` 与 `so**_key`（不一致就拉不到用户）；
 > 重跑 `install` 会**沿用已有密钥**，不会换。
 
 ---
 
-## 2. amd64 怎么部署
+## 2. 一台机器多个机场（多实例）
 
 ```bash
-uname -m                      # 期望 x86_64
-
-# ① 放二进制（来源见 DEPLOY.md §2）
-install -d -m 755 /usr/local/soco
-install -m 755 /root/so/bin/soco        /usr/local/soco/soco
-install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
-
-# ② 一键安装（向导里协议选 1 = Shadowsocks 2022）
-/root/so/console/so-console install
-
-# ③ 验证
-/root/so/console/so-console status      # 服务 active、端口 LISTEN
-/root/so/console/so-console verify      # 适配层已加载（否则用户数会停在 88）
-/root/so/console/so-console probe 3     # 3/3
+so-console inst                                  # 列表：实例 / 节点ID / 协议 / 状态 / 重启
+so-console inst new                              # 向导：实例名 → 节点ID → 协议 → 面板
+so-console inst new jp1 --node-id 21 --type vless --url https://p2.example.com
+so-console inst start   jp1
+so-console inst stop    jp1
+so-console inst restart jp1
+so-console inst log     jp1
+so-console inst remove  jp1
 ```
 
-要点：`soco.service` 必须带 `Environment=LD_PRELOAD=/usr/local/soco/libsoco.so`（控制台会写好）；
-业务端口 **TCP+UDP** 都要放行；压测时**串行**跑，任何时刻最多 1 个探测客户端。
-
----
-
-## 3. arm64 怎么部署
-
-```bash
-uname -m                      # 期望 aarch64
-
-# ① 放二进制（variantE；或用 _ops/build_variant*.py 生成）
-install -d -m 755 /usr/local/soco
-install -m 755 /root/so/bin/soco        /usr/local/soco/soco
-install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
-
-# ② 一键安装（向导里协议选 2 = VLESS + REALITY）
-/root/so/console/so-console install
-
-# ③ 验证
-/root/so/console/so-console verify
-/root/so/console/so-console probe 3
-/root/so/console/so-console routes      # 分流只读：规则数 / 首个出站 / 加载状态
-```
-
-要点：必须用 variantE 那一版二进制；REALITY 的 `public_key / short_id / server_name` 由面板下发，节点侧不写；
-流媒体分流由其它程序负责，控制台**只读**。
-
----
-
-## 4. 一台机器多个机场（多实例）
-
-```bash
-# 列表：实例 / 节点ID / 协议 / 状态 / 重启次数
-/root/so/console/so-console inst
-
-# 向导：实例名 → 节点 ID → 协议 → 面板地址
-/root/so/console/so-console inst new
-
-# 一行式（同一次向导的等价写法）
-/root/so/console/so-console inst new jp1 --node-id 21 --type vless --url https://p2.example.com
-
-# 生命周期
-/root/so/console/so-console inst start   jp1
-/root/so/console/so-console inst stop    jp1
-/root/so/console/so-console inst restart jp1
-/root/so/console/so-console inst log     jp1
-/root/so/console/so-console inst remove  jp1
-```
-
-每个实例 = 独立 `soco@<名>.service` + `<名>.conf`（`0600`）+ 独立日志；
-端口由各自面板下发，装完 `inst` 列表里能直接看到状态与重启次数。
+每个实例 = 独立 `soco@<名>.service` + `<名>.conf`（`0600`）+ 独立日志；端口由各自面板下发。
 
 | 约束 | 说明 |
 |---|---|
@@ -222,7 +182,7 @@ install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
 
 ---
 
-## 5. 全部命令总表
+## 3. 全部命令总表
 
 | 命令 | 作用 |
 |---|---|
@@ -243,13 +203,14 @@ install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
 
 ---
 
-## 6. 目录
+## 4. 目录
 
 ```
 soco/
-├── README.md          ← 本文件（前置条件 + 一键部署 + 控制台 + 两架构路径 + 命令总表）
-├── DEPLOY.md          ← 新机器部署全流程（二进制来源、逐步骤、回滚、故障表）
-├── CONSOLE.md         ← 控制台命令参考（含输出样例、退出码）
+├── README.md          ← 本文件（前置条件 + 一键命令 + 控制台 + 命令总表）
+├── install.sh         ← 一键引导脚本（拉项目 → 进控制台）
+├── DEPLOY.md          ← 完整部署手册（二进制来源、逐步骤、回滚、故障表）
+├── CONSOLE.md         ← 控制台命令参考（输出样例、退出码）
 ├── SECURITY.md        ← 占位符清单：哪些值要换成你自己的
 ├── console/so-console ← 单文件控制台（python3，无第三方依赖）
 ├── amd64/             ← src（适配层源码 / sink / 探针）、deploy、manifest、evidence
@@ -263,10 +224,72 @@ soco/
 
 ---
 
-## 7. 注意
+## 5. 注意
 
 1. **判健康只认真实握手**：`ss -lnt`、`nc -z` 都不可信（闸门态下端口照样 LISTEN，但不转发）。
 2. 日志固定 `log_level=error`（只记错误）；要看会话细节临时调高，改完重启。
 3. 分流由其它程序负责，`routes` 只读；`routes.toml` 写坏会**静默**退回 0 条。
 4. 授权 sink 占 `38443`，`127.0.0.1:443` 用 nft dnat 指过去，**对外 443 是空的**，可给网站用。
 5. 变更前先 `so-console verify && so-console backup`，变更后跑 `probe 3` + `doctor`。
+
+---
+
+## 附. 手动部署（不用一键命令时）
+
+### 附 1. 上传项目 + 三步上线
+
+```bash
+# ① 上传项目（只传项目本身）
+scp -r ./soco root@<你的服务器>:/root/so
+
+# ② 一键安装：向导只问三项 —— 节点 ID / 协议 / 面板地址
+/root/so/console/so-console install
+
+# ③ 验证：3 个用户真实握手 + 全量自检
+/root/so/console/so-console probe 3
+/root/so/console/so-console doctor
+```
+
+### 附 2. amd64 手动
+
+```bash
+uname -m                      # 期望 x86_64
+
+# ① 放二进制（来源见 DEPLOY.md §2）
+install -d -m 755 /usr/local/soco
+install -m 755 /root/so/bin/soco        /usr/local/soco/soco
+install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
+
+# ② 安装（向导里协议选 1 = Shadowsocks 2022）
+/root/so/console/so-console install
+
+# ③ 验证
+/root/so/console/so-console status
+/root/so/console/so-console verify      # 适配层已加载（否则用户数会停在 88）
+/root/so/console/so-console probe 3
+```
+
+要点：`soco.service` 必须带 `Environment=LD_PRELOAD=/usr/local/soco/libsoco.so`（控制台会写好）；
+业务端口 **TCP+UDP** 都要放行；压测时**串行**跑，任何时刻最多 1 个探测客户端。
+
+### 附 3. arm64 手动
+
+```bash
+uname -m                      # 期望 aarch64
+
+# ① 放二进制（variantE；或用 _ops/build_variant*.py 生成）
+install -d -m 755 /usr/local/soco
+install -m 755 /root/so/bin/soco        /usr/local/soco/soco
+install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
+
+# ② 安装（向导里协议选 2 = VLESS + REALITY）
+/root/so/console/so-console install
+
+# ③ 验证
+/root/so/console/so-console verify
+/root/so/console/so-console probe 3
+/root/so/console/so-console routes      # 分流只读：规则数 / 首个出站 / 加载状态
+```
+
+要点：必须用 variantE 那一版二进制；REALITY 的 `public_key / short_id / server_name` 由面板下发，节点侧不写；
+流媒体分流由其它程序负责，控制台**只读**。
