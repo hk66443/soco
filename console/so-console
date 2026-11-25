@@ -1,0 +1,670 @@
+#!/usr/bin/env python3
+# so-console â€” one-file control console for a soco node (amd64 / arm64)
+#
+#   ./so-console                  # interactive console (numbered menu)
+#   ./so-console status|install|probe 497|gate|routes switch tw|logs soco ...
+#
+# Nothing here is host-specific: every path/dir comes from /etc/so/console.conf
+# (created by `install`), so the same file runs on any Debian x86_64 / aarch64 box.
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+from pathlib import Path
+
+CFG = Path(os.environ.get('SO_CONSOLE_CONF', '/etc/so/console.conf'))
+try:  # never die on a cp936/latin console
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+DEF = {
+    'pkg': '/root/so',                 # where this project was uploaded
+    'bin_dir': '/usr/local/soco',      # soco, libsoco.so, sing-box-probe, licence/
+    'conf': '/etc/soga/soga.conf',     # main node config (as the binary expects it)
+    'inst_dir': '/etc/soga',           # multi-instance configs: <inst>.conf
+    'service': 'soco',
+    'port': '',                        # business port (auto-detected if empty)
+    'arch': '',                        # amd64 | arm64 (auto-detected if empty)
+}
+UNITS = {
+    'soco.service': """[Unit]
+Description=soco node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=LD_PRELOAD={bin_dir}/libsoco.so
+ExecStart={bin_dir}/soco
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+""",
+    'soco@.service': """[Unit]
+Description=soco node instance %i
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=LD_PRELOAD={bin_dir}/libsoco.so
+ExecStart={bin_dir}/soco -c {inst_dir}/%i.conf
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+""",
+    'soco-licence-sink.service': """[Unit]
+Description=soco licence sink (fast-fail TLS)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 {bin_dir}/licence/sink.py --listen 0.0.0.0:38443
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+""",
+    'soco-sink-redirect.service': """[Unit]
+Description=redirect 127.0.0.1:443 to the licence sink
+After=soco-licence-sink.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c "nft list chain ip nat redir >/dev/null 2>&1 || nft add chain ip nat redir '{{ type nat hook output priority dstnat; policy accept; }}'"
+ExecStart=/bin/sh -c "nft list chain ip nat redir | grep -q 38443 || nft add rule ip nat redir ip daddr 127.0.0.1 tcp dport 443 dnat to 127.0.0.1:38443"
+
+[Install]
+WantedBy=multi-user.target
+""",
+    'soco-watchdog.service': """[Unit]
+Description=soco watchdog (real handshake probe)
+After=soco.service
+
+[Service]
+Type=simple
+Environment=PROBE_EVERY=30
+Environment=FAILS_TO_RESTART=3
+Environment=PREEMPT_SECONDS=0
+ExecStart=/usr/bin/python3 {bin_dir}/soco-watchdog.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+""",
+}
+LICENCE_HOSTS = ['sksjd.vaxilu.com', 'agdfgkdfg.singledance.xyz',
+                 'boiudihsdfk.singledance.xyz', 'sxp7hu5t.cilema.xyz']
+
+
+# ------------------------------------------------------------------ plumbing
+def cfg_load():
+    d = dict(DEF)
+    if CFG.is_file():
+        for line in CFG.read_text(encoding='utf-8').splitlines():
+            if '=' in line and not line.lstrip().startswith('#'):
+                k, v = line.split('=', 1)
+                d[k.strip()] = v.strip()
+    return d
+
+
+def cfg_save(d):
+    CFG.parent.mkdir(parents=True, exist_ok=True)
+    CFG.write_text('\n'.join('%s=%s' % (k, v) for k, v in d.items()) + '\n', encoding='utf-8')
+
+
+def sh(cmd, timeout=120):
+    try:
+        p = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True,
+                           text=True, timeout=timeout)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except subprocess.TimeoutExpired:
+        return 124, 'timeout: %s' % cmd
+    except FileNotFoundError as e:
+        return 127, str(e)
+
+
+def out(cmd):
+    return sh(cmd)[1].strip()
+
+
+def read_hosts():
+    try:
+        return Path('/etc/hosts').read_text(errors='replace')
+    except OSError:
+        return ''
+
+
+def arch():
+    m = os.uname().machine if hasattr(os, 'uname') else ''
+    return 'arm64' if m in ('aarch64', 'arm64') else 'amd64'
+
+
+def svc_state(name):
+    rc, s = sh(['systemctl', 'is-active', name])
+    return s.strip() or 'unknown'
+
+
+def main_pid(svc):
+    return out(['systemctl', 'show', svc, '-p', 'MainPID', '--value'])
+
+
+def journal_has(svc, pattern, since='-5min'):
+    rc, s = sh(['journalctl', '-u', svc, '--since', since, '-o', 'cat'], timeout=90)
+    return sum(1 for ln in s.splitlines() if re.search(pattern, ln))
+
+
+def det_port(c):
+    if c['port']:
+        return c['port']
+    rc, s = sh(['ss', '-lntup'])
+    m = re.findall(r':(\d{4,5})\s', s)
+    conf = Path(c['conf'])
+    if conf.is_file():
+        t = conf.read_text(encoding='utf-8', errors='replace')
+        m2 = re.findall(r'^(?:listen|server_port)\s*=\s*(\d+)', t, re.M)
+        if m2:
+            return m2[0]
+    for p in m:
+        if p in ('49989', '49999'):
+            return p
+    return ''
+
+
+# ------------------------------------------------------------------ commands
+def cmd_paths(c, _a):
+    print('pkg        : %s' % c['pkg'])
+    print('bin_dir    : %s' % c['bin_dir'])
+    print('conf       : %s' % c['conf'])
+    print('instances  : %s/*.conf' % c['inst_dir'])
+    print('service    : %s.service' % c['service'])
+    print('console.cfg: %s' % CFG)
+    print('port       : %s' % (det_port(c) or '<unknown>'))
+    print('arch       : %s (host=%s)' % (c['arch'] or arch(), arch()))
+    return 0
+
+
+def last_user_num(svc):
+    rc, s = sh(['journalctl', '-u', svc, '-n', '800', '-o', 'cat'])
+    nums = re.findall(r'current user num:\s*(\d+)', s)
+    return nums[-1] if nums else '-'
+
+
+def last_routes_line(svc):
+    rc, s = sh(['journalctl', '-u', svc, '-n', '800', '-o', 'cat'])
+    for ln in reversed(s.splitlines()):
+        if 'load routes config' in ln:
+            return ln.split('load routes config')[-1].strip()[:90]
+    return '-'
+
+
+def cmd_status(c, _a):
+    svc = c['service']
+    pid = main_pid(svc)
+    port = det_port(c)
+    listening = 'yes' if port and (':' + port) in out(['ss', '-lnt']) else 'no'
+    print('=== %s ===' % time.strftime('%F %T'))
+    print('arch        : %s' % (c['arch'] or arch()))
+    print('service     : %-10s pid=%-8s restarts=%s' % (
+        svc_state(svc), pid or '-',
+        out(['systemctl', 'show', svc, '-p', 'NRestarts', '--value']) or '-'))
+    if pid and pid not in ('0', ''):
+        print('uptime/rss  : %s' % out(['ps', '-o', 'etime=,rss=,pcpu=', '-p', pid]))
+    print('port        : %s (%s)' % (port or '-', listening))
+    print('users(svc)  : %s' % last_user_num(svc))
+    for u in ('soco-licence-sink', 'soco-sink-redirect', 'soco-watchdog'):
+        print('%-20s %s' % (u, svc_state(u)))
+    print('gate(5m)    : key_err=%d auth_fail=%d relay=%d' % (
+        journal_has(svc, 'soga key'), journal_has(svc, 'auth failed'),
+        journal_has(svc, 'tcp relay')))
+    print('routes      : %s' % last_routes_line(svc))
+    print('instances   : %s' % (', '.join(p.stem for p in Path(c['inst_dir']).glob('*.conf')) or '-'))
+    binf = Path(c['bin_dir']) / 'soco'
+    print('bin hash    : %s' % (out(['sha256sum', str(binf)])[:16] if binf.is_file() else 'MISSING'))
+    return 0
+
+
+def cmd_install(c, a):
+    svc, bd, conf = c['service'], Path(c['bin_dir']), Path(c['conf'])
+    pkg = Path(a[0]) if a else Path(c['pkg'])
+    print('== install  arch=%s  pkg=%s' % (arch(), pkg))
+    if os.geteuid() != 0:
+        print('!! must run as root')
+        return 2
+    c['pkg'] = str(pkg)
+    for d in (bd, bd / 'licence', Path(c['inst_dir'])):
+        d.mkdir(parents=True, exist_ok=True)
+    # binaries must be provided by the operator (build script or backup)
+    for name in ('soco', 'libsoco.so'):
+        f = bd / name
+        if not f.is_file():
+            for cand in (pkg / 'bin' / name, pkg / 'amd64' / 'bin' / name, pkg / 'arm64' / 'bin' / name):
+                if cand.is_file():
+                    shutil.copy2(cand, f)
+                    break
+        if not f.is_file():
+            print('!! missing %s â€” put it in %s or %s/bin/ (see DEPLOY.md Â§2)' % (f, bd, pkg))
+            return 3
+    os.chmod(bd / 'soco', 0o755)
+    os.chmod(bd / 'libsoco.so', 0o600)
+    # probe client + scripts from the project dir
+    for src, dst in ((pkg / '_ops' / 'probe_many.py', bd / 'probe_many.py'),
+                     (pkg / 'packaging' / 'soco-watchdog.py', bd / 'soco-watchdog.py'),
+                     (pkg / 'packaging' / 'routes-guard.py', bd / 'routes-guard.py')):
+        if src.is_file():
+            shutil.copy2(src, dst)
+            os.chmod(dst, 0o755)
+    # licence sink + cert
+    sink = pkg / 'amd64' / 'src' / 'licence-sink.py'
+    if not (bd / 'licence' / 'sink.py').is_file() and sink.is_file():
+        shutil.copy2(sink, bd / 'licence' / 'sink.py')
+    if not (bd / 'licence' / 'cert.pem').is_file():
+        rc, s = sh(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '3',
+                    '-keyout', str(bd / 'licence' / 'key.pem'), '-out', str(bd / 'licence' / 'cert.pem'),
+                    '-subj', '/CN=%s' % LICENCE_HOSTS[0],
+                    '-addext', 'subjectAltName=DNS:%s' % LICENCE_HOSTS[0]])
+        print('   cert: %s' % ('ok' if rc == 0 else 'FAILED ' + s[:120]))
+    os.chmod(bd / 'licence' / 'key.pem', 0o600)
+    # gate bypass: hosts entries (idempotent)
+    hosts = Path('/etc/hosts')
+    txt = read_hosts()
+    add = [h for h in LICENCE_HOSTS if h not in txt]
+    if add:
+        with hosts.open('a') as f:
+            f.write(''.join('\n127.0.0.1 %s\n' % h for h in add))
+        print('   hosts: added %d entries' % len(add))
+    # systemd units
+    us = Path('/etc/systemd/system')
+    for name, tpl in UNITS.items():
+        (us / name).write_text(tpl.format(bin_dir=c['bin_dir'], inst_dir=c['inst_dir']), encoding='utf-8')
+    print('   units: %d written' % len(UNITS))
+    sh(['systemctl', 'daemon-reload'])
+    sh(['systemctl', 'enable', '--now', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
+    sh(['systemctl', 'enable', '--now', svc + '.service'])
+    if (bd / 'soco-watchdog.py').is_file():
+        sh(['systemctl', 'enable', '--now', 'soco-watchdog.service'])
+    cfg_save(c)
+    print('   console.conf written -> %s' % CFG)
+    time.sleep(6)
+    cmd_gate(c, [])
+    print('next: %s probe 3   (%s doctor)' % (sys.argv[0], sys.argv[0]))
+    return 0
+
+
+def cmd_service(c, a):
+    act = a[0] if a else 'status'
+    svc = c['service']
+    if act not in ('start', 'stop', 'restart', 'status'):
+        print('usage: service start|stop|restart|status')
+        return 2
+    if act != 'status':
+        for u in ('soco-licence-sink', 'soco-sink-redirect') if act != 'stop' else ():
+            sh(['systemctl', act, u])
+        rc, s = sh(['systemctl', act, svc + '.service'])
+        print(s.strip() or 'ok')
+    return cmd_status(c, [])
+
+
+def cmd_users(c, _a):
+    print('local peer count (svc log) : %s' % last_user_num(c['service']))
+    panel = Path(c['conf'])
+    if not panel.is_file():
+        print('panel users                : <no config>')
+        return 0
+    k = dict(l.split('=', 1) for l in panel.read_text().splitlines()
+             if '=' in l and not l.lstrip().startswith('#'))
+    url, nid, key = k.get('webapi_url', ''), k.get('node_id', ''), k.get('webapi_key', '')
+    if not (url and nid and key):
+        print('panel users                : <webapi_url / node_id / webapi_key missing>')
+        return 0
+    nt = {'ss': 'shadowsocks', 'vless': 'vless', 'vmess': 'vmess'}.get(k.get('server_type', 'vless'), 'vless')
+    u = '%s/api/v1/server/UniProxy/user?node_id=%s&node_type=%s&token=%s' % (
+        url.rstrip('/'), nid, nt, key)
+    rc, s = sh(['curl', '-sS', '--max-time', '20', u])
+    try:
+        print('panel users                : %d' % len(json.loads(s)['users']))
+    except Exception:
+        print('panel users                : <fetch failed> %s' % s[:100].replace(key, '***'))
+    return 0
+
+
+def cmd_probe(c, a):
+    n = a[0] if a else '3'
+    idx = a[1] if len(a) > 1 else ''
+    script = Path(c['bin_dir']) / 'probe_many.py'
+    if not script.is_file():
+        print('!! %s missing (run `install` first)' % script)
+        return 2
+    cmd = ['python3', '-u', str(script), 'all' if n in ('all', 'full') else str(n)]
+    if idx:
+        cmd.append(idx)
+    print('== probe (serial)  %s' % ' '.join(cmd[2:]))
+    t0 = time.time()
+    rc, s = sh(cmd, timeout=7200)
+    print(s.rstrip())
+    print('== probe done rc=%d wall=%ds' % (rc, round(time.time() - t0)))
+    return 0 if rc == 0 else 1
+
+
+def cmd_gate(c, _a):
+    svc = c['service']
+    print('== 600s gate self-check')
+    hosts = read_hosts()
+    missing = [h for h in LICENCE_HOSTS if h not in hosts]
+    print('  hosts entries      : %s' % ('ok' if not missing else 'MISSING %s' % missing))
+    print('  sink service       : %s' % svc_state('soco-licence-sink'))
+    print('  sink listening     : %s' % ('ok' if ':38443' in out(['ss', '-lnt']) else 'NO'))
+    print('  nft redirect       : %s' % ('ok' if '38443' in out(['nft', 'list', 'ruleset']) else 'NO'))
+    print('  key errors 10m     : %d' % journal_has(svc, 'soga key', '-10min'))
+    pid = main_pid(svc)
+    if pid and pid != '0':
+        print('  uptime             : %s' % out(['ps', '-o', 'etime=', '-p', pid]))
+    ok = not missing and journal_has(svc, 'soga key', '-10min') == 0
+    print('  verdict            : %s' % ('PASS (gate suppressed)' if ok else 'FAIL â€” repair with `install`'))
+    return 0 if ok else 1
+
+
+ROUTES_AREAS = {
+    'us': ('node-us', '38383'), 'hk': ('node-hk', '38888'), 'tw': ('node-tw', '20558'),
+    'jp': ('node-jp', '38123'), 'kr': ('node-kr', '23355'), 'sg': ('node-sg', '20955'),
+    'uk': ('node-uk', '25253'),
+}
+
+
+def cmd_routes(c, a):
+    svc = c['service']
+    rp = Path(c['inst_dir']) / 'routes.toml'
+    act = a[0] if a else 'list'
+    if act == 'list':
+        if not rp.is_file():
+            print('no routes file (%s)' % rp)
+            return 1
+        t = rp.read_text(errors='replace')
+        print('file   : %s (%d bytes)' % (rp, len(t)))
+        print('rules  : %d' % len(re.findall(r'^\[\[routes\]\]', t, re.M)))
+        m = re.search(r'\[\[routes\.Outs\]\][^\[]*', t, re.S)
+        if m:
+            srv = re.search(r'server\s*=\s*"([^"]+)"', m.group(0))
+            port = re.search(r'port\s*=\s*(\d+)', m.group(0))
+            print('first  : %s:%s' % (srv.group(1) if srv else '?', port.group(1) if port else '?'))
+        print('loaded : %s' % last_routes_line(svc))
+        return 0
+    if act == 'switch':
+        area = (a[1] if len(a) > 1 else 'us').lower()
+        if area not in ROUTES_AREAS:
+            print('areas: %s' % ', '.join(ROUTES_AREAS))
+            return 2
+        if not rp.is_file():
+            print('no routes file')
+            return 1
+        srv, port = ROUTES_AREAS[area]
+        shutil.copy2(rp, str(rp) + '.bak.%s' % time.strftime('%Y%m%dT%H%M%S'))
+        t = rp.read_text(errors='replace')
+        i = t.find('[[routes.Outs]]')
+        j = t.find('[[routes]]', i)
+        seg = t[i:j if j > 0 else len(t)]
+        new = re.sub(r'server\s*=\s*"[^"]*"', 'server="%s"' % srv, seg, count=1)
+        new = re.sub(r'port\s*=\s*\d+', 'port=%s' % port, new, count=1)
+        rp.write_text(t[:i] + new + t[j if j > 0 else len(t):])
+        os.utime(rp)
+        time.sleep(3)
+        print('switched first Outs -> %s:%s' % (srv, port))
+        return cmd_routes(c, ['list'])
+    if act == 'validate':
+        if not rp.is_file():
+            print('no routes file')
+            return 1
+        rc, s = sh(['python3', '-c',
+                    'import sys,tomllib;d=tomllib.load(open(sys.argv[1],"rb"));'
+                    'print("toml ok routes=%d" % len(d.get("routes",[])))', str(rp)])
+        print(s.strip() or 'invalid')
+        return rc
+    print('usage: routes list|switch <us|hk|tw|jp|kr|sg|uk>|validate')
+    return 2
+
+
+def cmd_inst(c, a):
+    act = a[0] if a else 'list'
+    d = Path(c['inst_dir'])
+    if act == 'list':
+        for p in sorted(d.glob('*.conf')):
+            name = p.stem
+            print('%-12s %-10s %s' % (name, svc_state('soco@%s' % name),
+                                      out(['systemctl', 'show', 'soco@%s' % name, '-p', 'NRestarts', '--value']) or '-'))
+        return 0
+    if act == 'new':
+        if len(a) < 2:
+            print('usage: inst new <name> [node_id=N] [webapi_url=U] [webapi_key=K] [soga_key=K]')
+            return 2
+        name = a[1]
+        dst = d / ('%s.conf' % name)
+        if dst.exists():
+            print('exists: %s' % dst)
+            return 1
+        t = Path(c['conf']).read_text()
+        for kv in a[2:]:
+            if '=' not in kv:
+                continue
+            k, v = kv.split('=', 1)
+            t = re.sub(r'(?m)^%s\s*=.*$' % re.escape(k), '%s=%s' % (k, v), t) \
+                if re.search(r'(?m)^%s\s*=' % re.escape(k), t) else t + '\n%s=%s\n' % (k, v)
+        shutil.copy2(Path(c['conf']), dst)
+        dst.write_text(t)
+        os.chmod(dst, 0o600)
+        print('created %s' % dst)
+        return cmd_inst(c, ['list'])
+    if act in ('start', 'stop', 'restart', 'log'):
+        if len(a) < 2:
+            print('usage: inst %s <name>' % act)
+            return 2
+        name = a[1]
+        if act == 'log':
+            rc, s = sh(['journalctl', '-u', 'soco@%s' % name, '-n', '60', '-o', 'cat'])
+            print(s.rstrip())
+            return 0
+        sh(['systemctl', act, 'soco@%s' % name])
+        return cmd_inst(c, ['list'])
+    if act == 'remove':
+        if len(a) < 2:
+            print('usage: inst remove <name>')
+            return 2
+        name = a[1]
+        sh(['systemctl', 'disable', '--now', 'soco@%s' % name])
+        (d / ('%s.conf' % name)).unlink(missing_ok=True)
+        print('removed %s' % name)
+        return cmd_inst(c, ['list'])
+    print('usage: inst list|new|start|stop|restart|log|remove')
+    return 2
+
+
+def cmd_logs(c, a):
+    unit = a[0] if a else c['service']
+    n = a[1] if len(a) > 1 else '80'
+    rc, s = sh(['journalctl', '-u', unit, '-n', str(n), '-o', 'cat'])
+    print(s.rstrip())
+    return rc
+
+
+def cmd_backup(c, _a):
+    ts = time.strftime('%Y%m%d-%H%M%S')
+    dst = Path('/root/so-backup-%s.tar.gz' % ts)
+    with tarfile.open(dst, 'w:gz') as t:
+        for p in (c['bin_dir'], c['inst_dir']):
+            if Path(p).exists():
+                t.add(p)
+    print('backup -> %s (%d KB)' % (dst, dst.stat().st_size // 1024))
+    return 0
+
+
+def cmd_rollback(c, a):
+    cands = sorted(Path('/root').glob('so-backup-*.tar.gz'))
+    if not cands:
+        print('no backups in /root')
+        return 1
+    if a:
+        pick = Path(a[0])
+    else:
+        for i, p in enumerate(cands, 1):
+            print('%2d) %s' % (i, p))
+        sel = input('restore which # (empty=abort): ').strip()
+        if not sel:
+            return 0
+        pick = cands[int(sel) - 1]
+    sh(['systemctl', 'stop', c['service']])
+    with tarfile.open(pick, 'r:gz') as t:
+        t.extractall('/')
+    sh(['systemctl', 'start', c['service']])
+    print('restored %s' % pick)
+    return cmd_status(c, [])
+
+
+def cmd_verify(c, _a):
+    bd = Path(c['bin_dir'])
+    print('== fingerprints')
+    for n in ('soco', 'libsoco.so'):
+        f = bd / n
+        print('  %-12s %s' % (n, out(['sha256sum', str(f)])[:16] if f.is_file() else 'MISSING'))
+    if (bd / 'soco').is_file():
+        print('  file magic  %s' % out(['file', '-b', str(bd / 'soco')])[:60])
+    print('== unit wiring')
+    u = Path('/etc/systemd/system/%s.service' % c['service'])
+    if u.is_file():
+        for ln in u.read_text().splitlines():
+            if ln.startswith(('ExecStart', 'Environment')):
+                print('  ' + ln)
+    print('== adapter loaded')
+    pid = main_pid(c['service'])
+    print('  %s' % ('yes' if pid and 'libsoco' in out(['cat', '/proc/%s/maps' % pid]) else 'NO â€” LD_PRELOAD missing or .so unreadable'))
+    return 0
+
+
+def cmd_doctor(c, _a):
+    rows = []
+
+    def chk(name, ok, hint=''):
+        rows.append((name, bool(ok), hint))
+
+    bd = Path(c['bin_dir'])
+    chk('binaries present', (bd / 'soco').is_file() and (bd / 'libsoco.so').is_file(), 'run install')
+    chk('config present', Path(c['conf']).is_file(), 'place the node config at %s' % c['conf'])
+    chk('service active', svc_state(c['service']) == 'active', 'service start')
+    chk('port listening', bool(det_port(c)) and (':' + det_port(c)) in out(['ss', '-lnt']), 'check config listen port')
+    chk('sink active', svc_state('soco-licence-sink') == 'active', 'install')
+    chk('sink port 38443', ':38443' in out(['ss', '-lnt']), 'install')
+    chk('nft redirect', '38443' in out(['nft', 'list', 'ruleset']), 'install')
+    chk('hosts licence entries', all(h in read_hosts() for h in LICENCE_HOSTS), 'install')
+    chk('no key errors 10m', journal_has(c['service'], 'soga key', '-10min') == 0, 'gate self-check')
+    chk('no auth failures 10m', journal_has(c['service'], 'auth failed', '-10min') == 0, 'check panel keys')
+    chk('adapter loaded', 'libsoco' in out(['cat', '/proc/%s/maps' % (main_pid(c['service']) or '0')]), 'install')
+    w = 0
+    for name, ok, hint in rows:
+        print('  [%s] %-26s %s' % ('PASS' if ok else 'FAIL', name, '' if ok else hint))
+        w += 0 if ok else 1
+    print('verdict: %s' % ('ALL PASS' if w == 0 else '%d problem(s) â€” see hints' % w))
+    return 0 if w == 0 else 1
+
+
+# ------------------------------------------------------------------ console
+MENU = [
+    ('1', 'status', 'çŠ¶æ€æ€»è§ˆï¼ˆæœåŠ¡/ç«¯å£/äººæ•°/é—¸é—¨/routesï¼‰'),
+    ('2', 'install', 'å®‰è£…æˆ–ä¿®å¤ï¼ˆç›®å½•/è¯ä¹¦/hosts/nft/systemdï¼‰'),
+    ('3', 'service', 'å¯åŠ¨ / åœæ­¢ / é‡å¯'),
+    ('4', 'users', 'æœ¬åœ°ä¸Žé¢æ¿ç”¨æˆ·æ•°å¯¹ç…§'),
+    ('5', 'probe', 'çœŸå®žæ¡æ‰‹æµ‹è¯•ï¼ˆ3 / 497 / allï¼‰'),
+    ('6', 'gate', '600 ç§’é—¸é—¨è‡ªæ£€'),
+    ('7', 'routes', 'æµåª’ä½“åˆ†æµï¼šlist / switch <åœ°åŒº> / validate'),
+    ('8', 'inst', 'å¤šå®žä¾‹ï¼šlist / new / start / stop / log / remove'),
+    ('9', 'logs', 'çœ‹æ—¥å¿—ï¼ˆunit [è¡Œæ•°]ï¼‰'),
+    ('10', 'backup', 'å¤‡ä»½ /usr/local/soco + é…ç½®'),
+    ('11', 'rollback', 'ä»Žå¤‡ä»½å›žæ»š'),
+    ('12', 'verify', 'æŒ‡çº¹ä¸Žé€‚é…å±‚æ£€æŸ¥'),
+    ('13', 'doctor', 'å…¨é‡è‡ªæ£€ï¼ˆé€é¡¹ PASS/FAILï¼‰'),
+    ('14', 'paths', 'æ˜¾ç¤ºçœŸå®žè·¯å¾„ï¼ˆé…ç½®/äºŒè¿›åˆ¶/å®žä¾‹ï¼‰'),
+]
+
+
+def run_cmd(c, name, args):
+    fn = globals().get('cmd_' + name)
+    if not fn:
+        print('unknown command: %s' % name)
+        return 2
+    return fn(c, args)
+
+
+def interactive(c):
+    while True:
+        print('\n' + '=' * 58)
+        print(' so-console Â· %s Â· %s' % (c['arch'] or arch(), time.strftime('%F %T')))
+        print('=' * 58)
+        for k, name, desc in MENU:
+            print('%3s) %-9s %s' % (k, name, desc))
+        print('   0) é€€å‡º')
+        try:
+            sel = input('so> ').strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if sel in ('0', 'q', 'quit', 'exit'):
+            return 0
+        hit = [m for m in MENU if m[0] == sel]
+        if not hit:
+            # allow typing a command directly:  probe 497 / routes switch tw
+            parts = sel.split()
+            if parts:
+                run_cmd(c, parts[0], parts[1:])
+            continue
+        name = hit[0][1]
+        extra = []
+        if name in ('service', 'probe', 'routes', 'inst', 'logs', 'rollback'):
+            try:
+                extra = input('  args for %s (blank=default): ' % name).split()
+            except EOFError:
+                extra = []
+        run_cmd(c, name, extra)
+
+
+USAGE = """so-console â€” å•æ–‡ä»¶æŽ§åˆ¶å°ï¼ˆamd64 / arm64 é€šç”¨ï¼‰
+
+  so-console                      äº¤äº’èœå•
+  so-console status               çŠ¶æ€æ€»è§ˆ
+  so-console install [pkg_dir]    å®‰è£…/ä¿®å¤ï¼ˆé»˜è®¤ /root/soï¼‰
+  so-console service start|stop|restart|status
+  so-console users                æœ¬åœ° vs é¢æ¿ç”¨æˆ·æ•°
+  so-console probe 3|497|all      çœŸå®žæ¡æ‰‹ï¼ˆä¸²è¡Œï¼‰
+  so-console gate                 600s é—¸é—¨è‡ªæ£€
+  so-console routes list|switch tw|validate
+  so-console inst list|new jp1 node_id=.. |start|stop|log|remove
+  so-console logs soco 100
+  so-console backup | rollback [file]
+  so-console verify | doctor | paths
+"""
+
+
+def main():
+    c = cfg_load()
+    if not c['arch']:
+        c['arch'] = arch()
+    if len(sys.argv) == 1:
+        return interactive(c)
+    name = sys.argv[1]
+    if name in ('-h', '--help', 'help'):
+        print(USAGE)
+        return 0
+    return run_cmd(c, name, sys.argv[2:])
+
+
+if __name__ == '__main__':
+    sys.exit(main())

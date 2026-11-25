@@ -1,31 +1,31 @@
 # ARM soco 88 用户上限：第三道闸门已闭合（2026-11-24）
 
-> 结论先说：**ARM（`130.61.141.143`）上的 soco 现在能在 100 用户下真正转发数据**，靠的是
-> `variantC = variantB + 10 处补丁`（8 个 SS/VLESS 控制闭包入口改 `ret` + 2 个 nil-error leaf 返回零值）。
+> 结论先说：**ARM（ARM_IP）上的 soco 现在能在 100 用户下真正转发数据**，靠的是
+> variantC = variantB + 10 处补丁（8 个 SS/VLESS 控制闭包入口改 ret + 2 个 nil-error leaf 返回零值）。
 > 实验室实测：N=100 连打 24/24 成功（含 300 s soak 15/15），N=200 连打 9/9 成功。
-> **生产服务未改动**（`soco.service` PID 2405082 全程在跑）。
+> **生产服务未改动**（soco.service PID 2405082 全程在跑）。
 
 ---
 
 ## 1. 上一轮卡在哪（接手点）
 
-- 上一会话（`session-c698e9a2` → `session-132548b3`）已经解决**加载层**：`variantB`（42 处 88 分支 + 2 处 crack）
-  让 `add user=100`、`current user num: 100` 成立，历史首次。
-- 但 **`>88` 时数据面仍被关**：日志有 `access address`，随后直接 `handle vless end`，
-  没有 `domain resolved` / `tcp direct dial`，探针结果 `EMPTY_CLOSE`（签名式关闭）。
-- 上一轮已排除：`cmp #88` 的 A 类 10 处（csel/nop、imm 0x58→4095）、B 类 12 处（`tbz→b`、`b.lt→b.al`）、
-  qemu 跑 amd 二进制、逐点比对 53 处、全局计数 `0x4ea3460`（50 处引用，改了无效）。
-- 动态手段当时全部卡住：`gdb attach` 不能 `continue`、`strace -k` 该 build 不支持、
-  `perf` 只采到 runtime/GC、`perf probe`（uprobe）注册成功但 0 命中。
-- 上一轮最后的动作是"自校准 funcnametab → 45,462 个函数"，`validate_funcs.py` 报表显示
-  36,267 个入口"不像 Go prologue"，会话在验证步骤被中断（`[exit -1]`）。
+- 上一会话（session-c698e9a2 → session-132548b3）已经解决**加载层**：variantB（42 处 88 分支 + 2 处 crack）
+  让 add user=100、current user num: 100 成立，历史首次。
+- 但 **>88 时数据面仍被关**：日志有 access address，随后直接 handle vless end，
+  没有 domain resolved / tcp direct dial，探针结果 EMPTY_CLOSE（签名式关闭）。
+- 上一轮已排除：cmp #88 的 A 类 10 处（csel/nop、imm 0x58→4095）、B 类 12 处（tbz→b、b.lt→b.al）、
+  qemu 跑 amd 二进制、逐点比对 53 处、全局计数 0x4ea3460（50 处引用，改了无效）。
+- 动态手段当时全部卡住：gdb attach 不能 continue、strace -k 该 build 不支持、
+  perf 只采到 runtime/GC、perf probe（uprobe）注册成功但 0 命中。
+- 上一轮最后的动作是"自校准 funcnametab → 45,462 个函数"，validate_funcs.py 报表显示
+  36,267 个入口"不像 Go prologue"，会话在验证步骤被中断（[exit -1]）。
 
 ## 2. 本轮第一步：把符号表修好（这是全部进展的前提）
 
-`validate_funcs.py` 的判断其实是对的——**表本身是错的**：重建出来的每个入口都比真实函数入口**早 0x40 字节**
-（指向 `_func` 元数据而不是代码入口）。
+validate_funcs.py 的判断其实是对的——**表本身是错的**：重建出来的每个入口都比真实函数入口**早 0x40 字节**
+（指向 _func 元数据而不是代码入口）。
 
-判定证据（对 45,462 条入口统计"是否以 Go 栈分裂序言 `ldr x16,[x28,#0x10]` 开头"）：
+判定证据（对 45,462 条入口统计"是否以 Go 栈分裂序言 ldr x16,[x28,#0x10] 开头"）：
 
 | 位移 | 命中率 |
 |---|---|
@@ -33,78 +33,78 @@
 | **+0x40** | **35,296 / 45,462 = 77.6%** |
 | -0x40 | 2,952 = 6.5% |
 
-交叉验证（+0x40 后逐个 disasm，全部是真序言）：`DialTCP`、`IsEnabled`、`SetInstanceExpired`、
+交叉验证（+0x40 后逐个 disasm，全部是真序言）：DialTCP、IsEnabled、SetInstanceExpired、
 8 个 SS/VLESS 清理闭包、2 个 nil-error leaf。修正后的表落在
-[`_ops/arm64.funcs.fixed.json`](../../_ops/arm64.funcs.fixed.json)（生成脚本 `_ops/fix_funcs.py`），
-保留原始地址字段 `va_raw`。
+[_ops/arm64.funcs.fixed.json](../../_ops/arm64.funcs.fixed.json)（生成脚本 _ops/fix_funcs.py），
+保留原始地址字段 va_raw。
 
-> 副作用提醒：上一轮所有"按表取到的 VA"（包括 gdb 断点、`0x2f7de20` 那次命中）都偏了 0x40；
-> 那次命中只是"该地址是代码"，**不能**当作 `IsEnabled` 被调用的证据。
+> 副作用提醒：上一轮所有"按表取到的 VA"（包括 gdb 断点、0x2f7de20 那次命中）都偏了 0x40；
+> 那次命中只是"该地址是代码"，**不能**当作 IsEnabled 被调用的证据。
 
-同时补了一张调用图 [`_ops/arm64.callgraph.json`](../../_ops/arm64.callgraph.json)
+同时补了一张调用图 [_ops/arm64.callgraph.json](../../_ops/arm64.callgraph.json)
 （45,462 函数 / 378,329 条 BL+B 边），并确认了为什么静态找"谁调用了闸门"会空手：
-`SetInstanceExpired` / `GetInstanceExpired` / `IsEnabled` / `DialTCP` 的 **BL 调用者都是 0**，
-全是 Go 接口表 `blr` 间接调用（10,419 个函数里有间接调用），静态链断在这里。
+SetInstanceExpired / GetInstanceExpired / IsEnabled / DialTCP 的 **BL 调用者都是 0**，
+全是 Go 接口表 blr 间接调用（10,419 个函数里有间接调用），静态链断在这里。
 
 ## 3. 定位方式：拿 amd64 的 53 处语义表反查 ARM 同名函数
 
-`amd64/manifest/patch-manifest-amd64.json` 里每条补丁都带 `role + owner.name`，而 **ARM 二进制的函数名与
-amd64 完全同构**（同一个 garble 种子：`a4HxrqKD9.(*JfPfDr1BO)._jIcEtfai4.func2.func1` 这种）。
-所以 53 处的 ARM 对应物可以按名字直接落位，而不是从 `cmp #88` 反推。
+amd64/manifest/patch-manifest-amd64.json 里每条补丁都带 role + owner.name，而 **ARM 二进制的函数名与
+amd64 完全同构**（同一个 garble 种子：a4HxrqKD9.(*JfPfDr1BO)._jIcEtfai4.func2.func1 这种）。
+所以 53 处的 ARM 对应物可以按名字直接落位，而不是从 cmp #88 反推。
 
-`variantB` 已经覆盖了 42 处（26 `api-user-preserve` + 8 `core-slice-preserve` + 8 `core-cleanup-skip`），
+variantB 已经覆盖了 42 处（26 api-user-preserve + 8 core-slice-preserve + 8 core-cleanup-skip），
 **剩下 11 处从未在 ARM 上试过**：
 
 | amd 角色 | amd 处数 | ARM 对应 | 是否已移植 |
 |---|---|---|---|
-| `api-user-preserve` | 26 | `ToPanelUsers` / `GetUser` / `GetUsers` 等（`tbz→b`） | ✅ variantB |
-| `core-slice-preserve` | 8 | `a4HxrqKD9.(*…).xVhdeAZ_or+…` | ✅ variantB |
-| `core-cleanup-skip` | 8 | 同上，清零块 | ✅ variantB |
-| `shared-gate-false` | 1 | `Po39saOz.W2IY7p`（crack 里已置假叶子） | ✅ 等价已存在 |
-| **`control-ss-vless-leaf`** | **8** | `Z9lU6H.(*NStQoY2/HXK0JZEAK2).cK2x0X|eLemGS4PoODM.func{1,2}.func1` | ❌ **本轮补上** |
-| **`nil-error-leaf`** | **2** | `E2L2TNbFODvd.O8ecjRSd0zK`（xboard）/ `E2L2TNbFODvd.IfBgxLwq4` | ❌ **本轮补上** |
+| api-user-preserve | 26 | ToPanelUsers / GetUser / GetUsers 等（tbz→b） | ✅ variantB |
+| core-slice-preserve | 8 | a4HxrqKD9.(*…).xVhdeAZ_or+… | ✅ variantB |
+| core-cleanup-skip | 8 | 同上，清零块 | ✅ variantB |
+| shared-gate-false | 1 | Po39saOz.W2IY7p（crack 里已置假叶子） | ✅ 等价已存在 |
+| **control-ss-vless-leaf** | **8** | Z9lU6H.(*NStQoY2/HXK0JZEAK2).cK2x0X|eLemGS4PoODM.func{1,2}.func1 | ❌ **本轮补上** |
+| **nil-error-leaf** | **2** | E2L2TNbFODvd.O8ecjRSd0zK（xboard）/ E2L2TNbFODvd.IfBgxLwq4 | ❌ **本轮补上** |
 
-## 4. 逐点实测（实验室：`/root/lab88`，mock 面板 + 裸 VLESS 探针，单轮约 40 s）
+## 4. 逐点实测（实验室：/root/lab88，mock 面板 + 裸 VLESS 探针，单轮约 40 s）
 
-探针 `/tmp/probe_vless.py` 做**真实 VLESS 握手**，目标是 `127.0.0.1:22`，只有拿到 sshd banner 才是 `RELAY_OK`。
+探针 /tmp/probe_vless.py 做**真实 VLESS 握手**，目标是 127.0.0.1:22，只有拿到 sshd banner 才是 RELAY_OK。
 
 | 变体（都基于 variantB） | N | 结果 |
 |---|---|---|
-| **variantC**（8 闭包 `ret` + 2 nil leaf 零值） | 88 | `RELAY_OK ×3` ✅ |
-| **variantC** | 100 | `RELAY_OK ×3` ✅（首次） |
-| **variantC** | 100 | soak 300 s：`RELAY_OK 15/15` ✅ |
-| **variantC** | 200 | `RELAY_OK ×3` ✅ |
+| **variantC**（8 闭包 ret + 2 nil leaf 零值） | 88 | RELAY_OK ×3 ✅ |
+| **variantC** | 100 | RELAY_OK ×3 ✅（首次） |
+| **variantC** | 100 | soak 300 s：RELAY_OK 15/15 ✅ |
+| **variantC** | 200 | RELAY_OK ×3 ✅ |
 | **variantC** | 100/100/200/100 | 4 轮 × 6 探针 = **24/24** ✅ |
-| variantB（上一轮基线） | 100 | `EMPTY_CLOSE ×3` ❌ |
-| 只打 xboard nil leaf（`variantD`） | 100 | 首轮 3/3 通过，复测 1/15、1/14（首个连接后监听器不再接受）⚠️ 不稳定 |
-| 只打 generic nil leaf | 100 | `EMPTY_CLOSE ×3` ❌ |
-| 只打 4 个 VLESS 闭包 | 100 | `EMPTY_CLOSE ×3` ❌ |
+| variantB（上一轮基线） | 100 | EMPTY_CLOSE ×3 ❌ |
+| 只打 xboard nil leaf（variantD） | 100 | 首轮 3/3 通过，复测 1/15、1/14（首个连接后监听器不再接受）⚠️ 不稳定 |
+| 只打 generic nil leaf | 100 | EMPTY_CLOSE ×3 ❌ |
+| 只打 4 个 VLESS 闭包 | 100 | EMPTY_CLOSE ×3 ❌ |
 | nil + 4 VLESS 闭包 | 100 | 6/6 ✅ |
 | nil + 4 SS 闭包 | 100 | 6/6 ✅ |
 | nil + 8 闭包 | 100 | 6/6 ✅ |
 | nil + 4 VLESS + generic nil | 100 | 6/6 ✅ |
 
 **读法**：
-1. **开闸的是 `E2L2TNbFODvd.O8ecjRSd0zK`（xboard 专用本地 nil-error leaf）**——只有"返回 nil 错误"之后，
-   `>88` 才不再走清理路径。这正是 amd64 `#52` 的语义（`auOKiDc_.BPYpzcmop9Oe`）。
+1. **开闸的是 E2L2TNbFODvd.O8ecjRSd0zK（xboard 专用本地 nil-error leaf）**——只有"返回 nil 错误"之后，
+   >88 才不再走清理路径。这正是 amd64 #52 的语义（auOKiDc_.BPYpzcmop9Oe）。
 2. **8 个控制闭包决定"稳定性"**：只打 nil leaf 时首个连接能过，之后监听器不再服务；
-   闭包改 `ret`（等价 amd64 的 `0x49 → 0xC3`）后不再自杀。
-3. `variantD`（1 处补丁）出现过"首轮通过、复测挂"的矛盾结果，**不建议当生产候选**；
+   闭包改 ret（等价 amd64 的 0x49 → 0xC3）后不再自杀。
+3. variantD（1 处补丁）出现过"首轮通过、复测挂"的矛盾结果，**不建议当生产候选**；
    生产用 **variantC（10 处）**，把 amd64 的意图集补齐。
 
 ## 5. 交付物
 
 | 文件 | sha256 | 说明 |
 |---|---|---|
-| `arm64/bin/soco-arm64.variantC` | `7dd429834cf024a79f30ee0b3cb740730a9ef0af007e4da89987c74a5084d859` | **推荐**：variantB + 10 处 |
-| `arm64/bin/soco-arm64.variantB` | `a22c1e715680bc444cd0bb462ac10137644f62e7422be3ffc823202728463ba8` | 加载层（100 用户可加载，数据面仍关） |
-| `_ops/variantC_patchlist.txt` | — | 10 处补丁的 `file_off / va / before / after` |
-| `_ops/build_variantC.py` | — | 生成脚本（自带断言：入口必须是栈检查序言） |
-| `_ops/arm64.funcs.fixed.json` | — | 45,462 个函数入口（已修正 +0x40） |
-| `_ops/arm64.callgraph.json` | — | 378,329 条调用边 |
+| arm64/bin/soco-arm64.variantC | 7dd429834cf024a79f30ee0b3cb740730a9ef0af007e4da89987c74a5084d859 | **推荐**：variantB + 10 处 |
+| arm64/bin/soco-arm64.variantB | a22c1e715680bc444cd0bb462ac10137644f62e7422be3ffc823202728463ba8 | 加载层（100 用户可加载，数据面仍关） |
+| _ops/variantC_patchlist.txt | — | 10 处补丁的 file_off / va / before / after |
+| _ops/build_variantC.py | — | 生成脚本（自带断言：入口必须是栈检查序言） |
+| _ops/arm64.funcs.fixed.json | — | 45,462 个函数入口（已修正 +0x40） |
+| _ops/arm64.callgraph.json | — | 378,329 条调用边 |
 
-补丁清单（va 为修正后的真实入口，`file_off = 0x13834C0 + (va - 0x23934C0)`；
-落地版以 `_ops/variantC_patchlist.txt` 为准）：
+补丁清单（va 为修正后的真实入口，file_off = 0x13834C0 + (va - 0x23934C0)；
+落地版以 _ops/variantC_patchlist.txt 为准）：
   Ke3Pasll._jIcEtfai4.func2.func1  0x0319f5c0  ldr x16,[x28,#0x10] -> ret
   Ke3Pasll._jIcEtfai4.func1.func1  0x031a1580  -> ret
   Ke3Pasll.jvauV_P.func1.func1     0x031a3580  -> ret
@@ -161,7 +161,7 @@ systemctl restart soco.service
 
 | N | 单发 `cdn-cgi/trace` | 并发 | 第二目标 |
 |---|---|---|---|
-| 100 | 200，`ip=130.61.141.143`，TLS1.3 | 20/20 | — |
+| 100 | 200，`ip=ARM_IP`，TLS1.3 | 20/20 | — |
 | 500 | 200 | 20/20 | `ifconfig.co` 200 |
 | 1000 | 200 | **30/30** | 10 MB 级下载正常 |
 
@@ -185,13 +185,13 @@ POST /api/v1/server/UniProxy/push    bytes=22   {"1":[18124,10046214]}
 
 | 项 | 值 |
 |---|---|
-| 目标 | ARM `130.61.141.143`，`soco.service`，node 644，REALITY `*:49999` |
+| 目标 | ARM `ARM_IP`，`soco.service`，node ARM_NODE_ID，REALITY `*:49999` |
 | 切换前 | `3733296060dd…`（crack 版 + hosts/sink），PID 2405082，NRestarts=0 |
 | 切换后 | **`7dd429834cf024…`（variantC）**，PID 2438733，NRestarts=0，监听 14 s 就绪 |
 | 备份/回滚 | `/root/soco-verified-tests/soco.pre-variantC.202611241151`、`/usr/local/soco/soco.old.202611241151` |
 | 切换后实测 | 真实面板参数（pbk `<REDACTED-REALITY-PBK>`，sid `<REDACTED>`）经 REALITY：200、并发 10/10、20 MB 下载 5.46 s（≈29 Mbps） |
-| 日志 | `submit data success` 正常、无 `soga key 错误`（variantC 自带 crack，不再依赖 sink）、无 panic |
-| 面板用户数 | **node 644 目前只有 1 个用户（id 1635）** —— 所以 `>88` 的生产实况要等面板把用户加上去；二进制层已由第 7.1/7.2 节证明 |
+| 日志 | `submit data success` 正常、无 `so** key 错误`（variantC 自带 crack，不再依赖 sink）、无 panic |
+| 面板用户数 | **node ARM_NODE_ID 目前只有 1 个用户（id 1635）** —— 所以 `>88` 的生产实况要等面板把用户加上去；二进制层已由第 7.1/7.2 节证明 |
 
 回滚：
 ```bash
@@ -218,7 +218,7 @@ curl.exe -s -x socks5h://127.0.0.1:21191 https://www.cloudflare.com/cdn-cgi/trac
 
 | 场景 | 并发 | 结果 |
 |---|---|---|
-| 单链路（1 条代理 → 生产 49999） | 1 | 200，回 `ip=130.61.141.143`（证明代理 → REALITY 链路成立） |
+| 单链路（1 条代理 → 生产 49999） | 1 | 200，回 `ip=ARM_IP`（证明代理 → REALITY 链路成立） |
 | 100 条代理各 1 路 → 生产 49999 | 100 | **96/100** 200；4 个失败里 3 个直连代理可用（瞬时），1 个代理已死 |
 | 100 条代理各 2 路 → 生产 49999 | **200** | **190/200** 200；10 个失败**成对**（同一代理两路同时失败）→ 代理侧限流，非节点侧 |
 | 实验室 200 个**不同 uuid** 同时打 | **200** | **200/200** 通过，1.6 s 完成；服务端日志 200 个 distinct user id、400 条 `tcp relay`、200 条 `access address` |
@@ -266,7 +266,7 @@ soco --(http://127.0.0.1:18090)--> rewriter --(https)--> 真面板
 |---|---|
 | soco 视角 | `current user num: 201`（1 个真用户 1635 + 200 注入） |
 | 真面板接口 | `user: real=1 injected=200 total=201`，`config` 仍返回真 REALITY 参数（49999 / tls=2） |
-| 客户端（真用户 uuid，REALITY） | 200，`ip=130.61.141.143` ✅ |
+| 客户端（真用户 uuid，REALITY） | 200，`ip=ARM_IP` ✅ |
 | 客户端（注入的假 uuid） | 200 ✅ ——「伪装出来的人」真的能用 |
 | 100 条住宅代理 × 2 路 = **200 路并发**，每路一个**不同 uuid** | **190/200** 成功；10 个失败成对（代理侧限流），节点侧无错 |
 | 服务端自证 | **192 个注入 user id 真实过流量**、99 个不同出口 IP、388 条 `tcp relay`、`NRestarts=0`、无 panic |
@@ -276,10 +276,10 @@ soco --(http://127.0.0.1:18090)--> rewriter --(https)--> 真面板
 `_ops/prod_rewrite_off.sh`（还原 conf → 杀代理 → 重启 → 自检）。
 
 **代价（用之前必须知道）**：
-1. 注入的用户**面板不记账**（流量/在线/到期都不动），因为 push 里被过滤掉了；要真记账只能把 node 644
+1. 注入的用户**面板不记账**（流量/在线/到期都不动），因为 push 里被过滤掉了；要真记账只能把 node ARM_NODE_ID
    加进这些订阅的可用节点/权限组——那之后 `/user` 会自己回 200 条，根本不需要伪装。
 2. 改写代理是常驻进程，长期用必须做成 systemd unit（否则它挂了 soco 拉不到新列表）。
-3. `订阅数加到 200` 不改变 `/user` 的返回（现在仍只有 `id=1635`），说明那 200 个订阅不归 node 644。
+3. `订阅数加到 200` 不改变 `/user` 的返回（现在仍只有 `id=1635`），说明那 200 个订阅不归 node ARM_NODE_ID。
 
 ### 7.8 生产真实 497 人（2026-11-24 14:00）：面板人数到位后，variantC 全通
 
@@ -327,7 +327,7 @@ TOTAL ok=497/497   wall=388s   failures={}
 | t+0 .. t+600 s | 连续 11 次探测全部 200 |
 | **t+660 s 起** | 全部 000；日志是 `user N access address` → `handle vless end`，**没有 `tcp direct dial`**（认证照过、不转发） |
 
-根因与 amd 上那份 `soco-licence-sink` 的注释一致：**soga 每 600 s 校验一次 licence 域名；这条请求一旦挂住/真网络失败，
+根因与 amd 上那份 `soco-licence-sink` 的注释一致：**so** 每 600 s 校验一次 licence 域名；这条请求一旦挂住/真网络失败，
 数据中心面就被关掉**。AMD 早就用「让它在本地**快速失败**」的办法绕过了，ARM 一直没做。
 
 修复（照 amd 抄，已验证）：
@@ -376,20 +376,20 @@ soco-sink-redirect.service  nft -f sink-redirect.nft              -> 本机 127.
 - 迁完后复测 **12 分钟（t+0…t+720 s）三个用户全程 200**，600 s 闸门没有回来 → 结论：**licence 检查只要"快速失败"即可，端口随意**，443 现在空着。
 - 现在监听：`0.0.0.0:38443`（sink）、`*:49999`（soco）；443 无监听。
 
-**流媒体路由（`/etc/soga/routes.toml`，10 条）体检**：
+**流媒体路由（`/etc/so**/routes.toml`，10 条）体检**：
 
 ```
-journalctl -u soco | grep routes  ->  load routes config file </etc/soga/routes.toml> success, routes num: 10, enable: true
-实测 www.netflix.com 命中规则：    tcp proxy dial 10.0.37.39:57566 -> node-us.nfdns.xyz:38383 (www.netflix.com:443)
+journalctl -u soco | grep routes  ->  load routes config file </etc/so\*\*/routes.toml> success, routes num: 10, enable: true
+实测 www.netflix.com 命中规则：    tcp proxy dial <ARM_LAN_IP>:57566 -> node-us.nfdns.xyz:38383 (www.netflix.com:443)
 ```
 
-- 规则/出站**都在工作**：`chatgpt.com` 走同一个 US 出站 **200**、`ipinfo.io` 走 #Main 回 `130.61.141.143`。
+- 规则/出站**都在工作**：`chatgpt.com` 走同一个 US 出站 **200**、`ipinfo.io` 走 #Main 回 `ARM_IP`。
 - **但 `www.netflix.com` 通过该 US 出站 60 秒无响应**（节点本机直连 netflix 是 `302 / 0.12 s`，TCP 到 `nfdns:38383` 也通）→ 是 **NF 那条链路对 Netflix 的问题**（NF 节点侧或被目标静默丢弃），不是 soco 路由逻辑。
 - 待办：换 HK/TW/JP 出站复测 Netflix，或找 NF 侧确认节点/密码（面板 uuid `<REDACTED-PANEL-UUID>…` ≠ NF 密码 `<REDACTED-NF-PASSWORD>…` 这条老坑要一起看）。
 
 ## 8. 仍未做（下一轮）
 
-1. **生产实况 `>88`**：等面板把 node 644 的用户数加上去（现在 1 个），届时用 7.5 的夹具直接复测；
+1. **生产实况 `>88`**：等面板把 node ARM_NODE_ID 的用户数加上去（现在 1 个），届时用 7.5 的夹具直接复测；
    二进制层已由 7.1/7.2 证明。
 2. `soco-mesh` 备选架构下的同样验证（当前 stopped）。
 3. 24 h soak（本轮最长 300 s；生产切换后已稳定运行 NRestarts=0）。

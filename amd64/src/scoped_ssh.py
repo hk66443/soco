@@ -17,7 +17,7 @@ from pathlib import Path
 import paramiko
 
 HERE=Path(__file__).resolve().parent
-HOST='141.148.139.236'
+HOST='AMD_IP'
 REMOTE_ROOT='/root/soco-verified-tests'
 KNOWN_HOSTS=HERE.parent/'vps_known_hosts_141_148_139_236'
 

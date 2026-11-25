@@ -1,7 +1,7 @@
 {
   "status": "DEPLOYED_VERIFIED",
   "supersedes": "README 中「本证据不是生产 49989 已升级部署」的历史表述：生产 49989 已于本次切换并验证",
-  "host": "141.148.139.236",
+  "host": "AMD_IP",
   "node_id": 341,
   "service": "soco.service",
   "listen_port": 49989,
@@ -55,7 +55,7 @@
             "HTTP": 200,
             "tls_version": null,
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -65,7 +65,7 @@
             "HTTP": 200,
             "tls_version": "TLSv1.3",
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -82,7 +82,7 @@
             "HTTP": 200,
             "tls_version": null,
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -92,7 +92,7 @@
             "HTTP": 200,
             "tls_version": "TLSv1.3",
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -109,7 +109,7 @@
             "HTTP": 200,
             "tls_version": null,
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -119,7 +119,7 @@
             "HTTP": 200,
             "tls_version": "TLSv1.3",
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -136,7 +136,7 @@
             "HTTP": 200,
             "tls_version": null,
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -146,7 +146,7 @@
             "HTTP": 200,
             "tls_version": "TLSv1.3",
             "curl_exit_code": 0,
-            "egress_ip": "141.148.139.236",
+            "egress_ip": "AMD_IP",
             "egress_matches_node": true,
             "socks_request_granted": true,
             "owned_path_correlated": true
@@ -176,7 +176,7 @@
     "command": "python3 /root/soco-backup-final-20261121-v2/rollback.py"
   },
   "prior_failure_root_cause": {
-    "run": "installed-node341-final-20261121-v1",
+    "run": "installed-node AMD_NODE_ID-final-20261121-v1",
     "failed_at_seconds": 0.932,
     "cause": "验证器在服务绑定 49989 之前即时断言 owned_production_listeners 非空（真实就绪需约 10s），不是候选程序缺陷",
     "fix": "部署改用 postdeploy_validate_v2.py：先轮询 listener 与首个 Go refresh 周期，再做 egress/identity 断言"
@@ -190,7 +190,7 @@
     "validation_execution_sha256": "d01d01d23acf79a8d821e2a3caf7ef3d06356d015c319aabba809f97e4c391b2",
     "validator_exit_code": 0,
     "remote_paths": {
-      "run": "/root/soco-verified-tests/installed-node341-final-20261121-v2/",
+      "run": "/root/soco-verified-tests/installed-node AMD_NODE_ID-final-20261121-v2/",
       "deploy": "/root/soco-verified-tests/final-deploy-20261121-v2/",
       "exec_log": "/root/soco-verified-tests/deploy-v2-exec.log"
     }

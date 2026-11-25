@@ -1,7 +1,7 @@
 # amd64 运维手册（RUNBOOK）
 
-> 适用：Debian 12/13 x86_64，systemd，单节点 soga v2.18.1 + 适配器 + 环境旁路。
-> 所有命令以 root 执行；`PROBE` = 真实 SS2022 握手探测，唯一可信健康判据。
+> 适用：Debian 12/13 x86_64，systemd，单节点 so\*\* v2.18.1 + 适配器 + 环境旁路。
+> 所有命令以 root 执行；PROBE = 真实 SS2022 握手探测，唯一可信健康判据。
 
 ---
 
@@ -47,8 +47,8 @@ install -d -m 0755 /etc/soco
 cat > /etc/soco/soco.conf <<'EOF'
 type=xboard
 server_type=ss
-node_id=341
-soga_key=<面板给的 soga_key>
+node_id=AMD_NODE_ID
+so**_key=<面板给的 so**_key>
 api=webapi
 webapi_url=https://<面板域名>
 webapi_key=<面板给的 webapi_key>
@@ -73,7 +73,7 @@ systemctl daemon-reload
 systemctl enable --now soco-licence-sink.service soco.service soco-watchdog.service
 ```
 
-`/etc/systemd/system/soco.service` 的关键三行：
+/etc/systemd/system/soco.service 的关键三行：
 
 ```ini
 Environment=LD_PRELOAD=/usr/local/soco/libsoco.so
@@ -94,12 +94,12 @@ cd /root/soco-verified-tests && python3 probe_v2.py --run-id "check-$(date +%H%M
 
 | 现象 | 含义 |
 |---|---|
-| `PASS=true, curl 0, body=PROBE-*` | 健康 |
-| `curl 52/56` + 服务端日志**无** `start handle client` | **已进入停摆态**（闸门关了）→ 查 hosts / sink / 是否被改回 |
-| `curl 7` | 端口没在听 / 进程没了 |
-| PASS 但服务端日志有 `soga key 错误` 且进程 uptime > 600 s | 说明 sink 没生效，检查 `soco-licence-sink` 与 hosts |
+| PASS=true, curl 0, body=PROBE-* | 健康 |
+| curl 52/56 + 服务端日志**无** start handle client | **已进入停摆态**（闸门关了）→ 查 hosts / sink / 是否被改回 |
+| curl 7 | 端口没在听 / 进程没了 |
+| PASS 但服务端日志有 so** key 错误 且进程 uptime > 600 s | 说明 sink 没生效，检查 soco-licence-sink 与 hosts |
 
-**不要**用 `ss -lnt` 或 `nc -z` 判健康——停摆态下端口照听、TCP 照连。
+**不要**用 ss -lnt 或 nc -z 判健康——停摆态下端口照听、TCP 照连。
 
 ---
 
@@ -117,10 +117,10 @@ setsid nohup python3 probe_mesh_v2.py --run-id soak-$(date +%m%d%H%M) --port 499
 # 进程年龄与关键日志（判断闸门是否在 600 s 处发作）
 systemctl show soco.service --property=ExecMainStartTimestamp,NRestarts,MainPID
 journalctl -b _PID=$(systemctl show soco.service --property=MainPID --value) -o cat \
-  | grep -aE 'current user num|soga key|Shadowsocks listen' | tail -20
+  | grep -aE 'current user num|so** key|Shadowsocks listen' | tail -20
 ```
 
-健康曲线：`uptime < 600 s` 期望 PASS；`uptime > 600 s` **仍然 PASS** 才说明旁路生效（基线是 >600 s 后必 FAIL）。
+健康曲线：uptime < 600 s 期望 PASS；uptime > 600 s **仍然 PASS** 才说明旁路生效（基线是 >600 s 后必 FAIL）。
 
 ---
 
@@ -161,11 +161,11 @@ systemctl restart soco.service
 
 | 症状 | 排查顺序 |
 |---|---|
-| 新连接全 52，端口在听 | ① `probe_v2.py` 是否 52；② `systemctl is-active soco-licence-sink`；③ `grep vaxilu /etc/hosts`；④ 进程 uptime 是否 > 600 s；⑤ 日志有无 +600 s 的 `soga key 错误` |
-| 面板侧用户数不变 / 不刷新 | 检查 `/etc/soco/soco.conf` 的 `webapi_url/webapi_key`；`journalctl` 里找 `/user` 请求错误；sink 只拦授权域名，不影响面板 |
-| 用户数只有 88 | 适配器没加载：`grep libsoco /proc/$(pgrep -x soco)/maps`；确认 `LD_PRELOAD` 在 unit 里、`.so` 权限 0600 且属主 root |
+| 新连接全 52，端口在听 | ① probe_v2.py 是否 52；② systemctl is-active soco-licence-sink；③ grep vaxilu /etc/hosts；④ 进程 uptime 是否 > 600 s；⑤ 日志有无 +600 s 的 so** key 错误 |
+| 面板侧用户数不变 / 不刷新 | 检查 /etc/soco/soco.conf 的 webapi_url/webapi_key；journalctl 里找 /user 请求错误；sink 只拦授权域名，不影响面板 |
+| 用户数只有 88 | 适配器没加载：grep libsoco /proc/$(pgrep -x soco)/maps；确认 LD_PRELOAD 在 unit 里、.so 权限 0600 且属主 root |
 | 内存吃紧 | 机器 962 MB；mesh 模式最多 2 个后端；实验室实例同时最多 2 个 |
-| 进程反复重启 | 看 `NRestarts` 与 journal；watchdog 只在连续 3 次真失败才重启，若在重启说明确实不通 |
+| 进程反复重启 | 看 NRestarts 与 journal；watchdog 只在连续 3 次真失败才重启，若在重启说明确实不通 |
 
 ---
 
@@ -181,24 +181,24 @@ python3 interval_lab_v4.py --run-id lab-base --port 19490 --mock-port 18490 \
 # 期望: 首个失败落在 601–618 s（基线）
 ```
 
-判读：`result.json` 里 `first_failure.t` 就是闸门时刻；`fails=0` 且 `t` 跑到 780 才是"没闸门"。
+判读：result.json 里 first_failure.t 就是闸门时刻；fails=0 且 t 跑到 780 才是"没闸门"。
 
 ---
 
 ## 7. 变更前必做
 
-1. `sha256sum /usr/local/soco/soco /usr/local/soco/libsoco.so` 记录当前值；
-2. `systemctl show soco.service --property=MainPID,ExecMainStartTimestamp` 记录；
-3. 备份：`cp -a /usr/local/soco /root/soco-backup-$(date +%Y%m%d-%H%M)`;
-4. 变更后**必须**跑 `probe_v2.py`，并且至少观察 12 分钟（跨过 600 s）才算通过。
+1. sha256sum /usr/local/soco/soco /usr/local/soco/libsoco.so 记录当前值；
+2. systemctl show soco.service --property=MainPID,ExecMainStartTimestamp 记录；
+3. 备份：cp -a /usr/local/soco /root/soco-backup-$(date +%Y%m%d-%H%M);
+4. 变更后**必须**跑 probe_v2.py，并且至少观察 12 分钟（跨过 600 s）才算通过。
 ---
 
 ## 8. 关于 mesh 的警告
 
-`mesh` 是兜底方案，不是等价替代：实测出现过 `active born_s_ago=627` 仍在服务的情况（轮换延迟 → 后端越过 600 s 闸门 → 新连接 52）。
+mesh 是兜底方案，不是等价替代：实测出现过 active born_s_ago=627 仍在服务的情况（轮换延迟 → 后端越过 600 s 闸门 → 新连接 52）。
 
 要用 mesh 必须补两处：
-1. 轮换判据从"睡眠 480 s"改成 **`now - active.born > 540` 立刻轮换**（`soco_mesh_v3.py` 的 `rotator()`）；
-2. `launch(primary=True)` 之后、`active_switch` 之前，用真实 SS2022 握手验证新后端，失败则回退上一个。
+1. 轮换判据从"睡眠 480 s"改成 **now - active.born > 540 立刻轮换**（soco_mesh_v3.py 的 rotator()）；
+2. launch(primary=True) 之后、active_switch 之前，用真实 SS2022 握手验证新后端，失败则回退上一个。
 
 单进程方案（hosts + sink）没有这个缺陷。

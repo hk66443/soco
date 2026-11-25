@@ -16,7 +16,7 @@
           null,
           0,
           {
-            "ip": "141.148.139.236"
+            "ip": "AMD_IP"
           },
           true
         ],
@@ -25,7 +25,7 @@
           "TLSv1.3",
           0,
           {
-            "ip": "141.148.139.236"
+            "ip": "AMD_IP"
           },
           true
         ]
@@ -40,7 +40,7 @@
           null,
           0,
           {
-            "ip": "141.148.139.236"
+            "ip": "AMD_IP"
           },
           true
         ],
@@ -49,7 +49,7 @@
           "TLSv1.3",
           0,
           {
-            "ip": "141.148.139.236"
+            "ip": "AMD_IP"
           },
           true
         ]
@@ -73,5 +73,5 @@
   "artifact_linkage_basis": "parent verified fixed artifact paths; full raw result attachment pending download",
   "original_execution_receipt_sha256": "78b4854fa4c176b19f212d1645681aa2e7f12ddffbc976af099a89d3cebd6882",
   "evidence_kind": "observed real-node execution summary (not full raw result)",
-  "local_scope": "node341 SS2022 on independent port19191, first/last of97; production49989 not deployed"
+  "local_scope": "node AMD_NODE_ID SS2022 on independent port19191, first/last of97; production49989 not deployed"
 }

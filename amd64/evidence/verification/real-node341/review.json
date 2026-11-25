@@ -11,7 +11,7 @@
       "HTTP": 200,
       "TLS": null,
       "curl_exit_code": 0,
-      "egress_ip": "141.148.139.236",
+      "egress_ip": "AMD_IP",
       "SOCKS_and_socket_path_verified": true
     },
     {
@@ -20,7 +20,7 @@
       "HTTP": 200,
       "TLS": "TLSv1.3",
       "curl_exit_code": 0,
-      "egress_ip": "141.148.139.236",
+      "egress_ip": "AMD_IP",
       "SOCKS_and_socket_path_verified": true
     },
     {
@@ -29,7 +29,7 @@
       "HTTP": 200,
       "TLS": null,
       "curl_exit_code": 0,
-      "egress_ip": "141.148.139.236",
+      "egress_ip": "AMD_IP",
       "SOCKS_and_socket_path_verified": true
     },
     {
@@ -38,7 +38,7 @@
       "HTTP": 200,
       "TLS": "TLSv1.3",
       "curl_exit_code": 0,
-      "egress_ip": "141.148.139.236",
+      "egress_ip": "AMD_IP",
       "SOCKS_and_socket_path_verified": true
     }
   ],
@@ -73,6 +73,6 @@
   "relay_closed": true,
   "real_panel_writes_forwarded": 0,
   "raw_result_sha256": "5436c1dbeadf88ca10fdc0421f7f69fe1f41f2ebe71a1a1a2747ec5b6fb42c7b",
-  "scope": "Real node341 first and last of 97 users, not all-users or concurrent load; read-only panel snapshot relay with local submission acknowledgements",
+  "scope": "Real node AMD_NODE_ID first and last of 97 users, not all-users or concurrent load; read-only panel snapshot relay with local submission acknowledgements",
   "elapsed_seconds": 15.0946
 }

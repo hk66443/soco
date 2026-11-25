@@ -7,8 +7,8 @@ import sys
 import paramiko
 
 HOSTS = {
-    "arm": ("130.61.141.143", "root", "<REDACTED>"),
-    "amd": ("141.148.139.236", "root", "<REDACTED>"),
+    "arm": ("ARM_IP", "root", "<REDACTED>"),
+    "amd": ("AMD_IP", "root", "<REDACTED>"),
 }
 
 

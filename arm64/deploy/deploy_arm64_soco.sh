@@ -4,7 +4,7 @@
 #   soco = soga v2.18.1 (arm64) + 43 字节破解 + LD_PRELOAD 面板适配层
 #
 # 用法（在目标机上，root）：
-#   NODE_ID=644 WEBAPI_KEY=xxxx SOGA_KEY=xxxx ./deploy_arm64_soco.sh
+#   NODE_ID=ARM_NODE_ID WEBAPI_KEY=xxxx SOGA_KEY=xxxx ./deploy_arm64_soco.sh
 #   或先编辑下面 4 个变量再直接跑
 #   加 -n 只做预检不落地：./deploy_arm64_soco.sh -n
 #
