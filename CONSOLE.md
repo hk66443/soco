@@ -15,12 +15,13 @@ ln -s /root/so/console/so-console /usr/local/bin/so-console   # 建议做软链
 
 | 谁填 | 填什么 |
 |---|---|
-| **客户** | 节点 ID、协议（`ss` / `vless`）、面板地址 —— **只有这三项** |
-| **控制台自动** | 节点密钥（随机 32 位 hex）、目录、证书、hosts、nft 规则、systemd 单元、端口探测、验证 |
+| **客户** | 节点 ID、协议（`ss` / `vless`）、面板地址、**节点密钥**（面板节点详情里的 `webapi_key`，与 `so**_key` 同一串） |
+| **控制台自动** | 目录、证书、hosts、nft 规则、systemd 单元、端口探测、真实握手验证 |
 | **固定不可改** | `type=xboard` / `api=webapi` / `check_interval=60` / `submit_interval=60` / **`log_level=error`（只记错误日志）** |
 
-> 自动生成的密钥会在安装结果里大字打印，**同一串要填进面板的 `webapi_key` 与 `so**_key`**。
-> 面板已有值时用 `--webapi-key <串>` 覆盖即可。
+> 节点密钥在向导里**粘面板那串**最稳（面板与节点必须一致）；回车留空 = 本机随机生成 32 位 hex，
+> 装完把打印出来的值填回面板（只有面板允许自定义密钥时才这么干）。
+> `--webapi-key <串>` 等价于在向导里填。
 
 ---
 
@@ -33,11 +34,13 @@ so-console install
 ```
 
 ```
-╭─ 安装向导  只填三项，其余固定
+╭─ 安装向导  面板上的四项
   节点 ID [ ]: 12
   协议  1) Shadowsocks 2022   2) VLESS + REALITY
   选择 [1]: 1
   面板地址 [https://]: https://panel.example.com
+  节点密钥 = 面板节点详情里的 webapi_key（与 so**_key 同一串）
+  节点密钥（回车 = 本机随机生成） [ ]: 3f9c1a7d2b4e60815c7a9e2d4b6f8031
 
   固定：type              · xboard / api=webapi
   固定：间隔              · pull/push 60s

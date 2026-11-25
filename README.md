@@ -69,7 +69,9 @@ curl -fsSL https://raw.githubusercontent.com/hk66443/soco/main/install.sh | bash
 
 ### 1.2 交互控制台
 
-进去以后就是菜单：选 `1 install`，向导只问三项（**节点 ID / 协议 / 面板地址**），其余全部固定自动完成。
+进去以后就是菜单：选 `1 install`，向导问四项（**节点 ID / 协议 / 面板地址 / 节点密钥**），
+其余全部固定自动完成。节点密钥就是面板节点详情里那串 `webapi_key`（与 `so**_key` 同一串），
+粘进去最稳；如果面板允许自定义、或暂时不接面板，回车就让本机随机生成一串，装完照着打印的值填回面板。
 菜单里也能直接敲任意命令，例如 `so> probe 3`、`so> inst new jp1 …`。
 
 ```
@@ -114,14 +116,14 @@ curl -fsSL https://raw.githubusercontent.com/hk66443/soco/main/install.sh | bash
 ### 1.3 一行式（脚本 / 批量，不进菜单）
 
 ```bash
-# 最常用：三项写在参数里，一条命令装完
-so-console install --node-id 12 --type ss --url https://panel.example.com
+# 面板已经给了一对 key（推荐：与面板完全一致）
+so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <面板给的key>
 
 # 第二个机场（另一台面板）
-so-console install --node-id 13 --type vless --url https://p2.example.com
+so-console install --node-id 13 --type vless --url https://p2.example.com --webapi-key <p2 的key>
 
-# 面板已经给了一对 key（覆盖自动生成的那串）
-so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <面板给的key>
+# 不给 --webapi-key：本机随机生成一串，装完打印出来，记得填回面板
+so-console install --node-id 12 --type ss --url https://panel.example.com
 
 # 只预演，不改系统（打印 7 步计划）
 so-console install --node-id 12 --type ss --url https://panel.example.com --dry-run
@@ -146,7 +148,7 @@ ln -sf /root/so/console/so-console /usr/local/bin/so-console
 | 节点 ID | 面板里那个节点 id | **客户填** |
 | 协议 | `ss`（Shadowsocks 2022）/ `vless`（VLESS + REALITY） | **客户选** |
 | 面板地址 | `https://panel.example.com` | **客户填** |
-| 节点密钥 | 随机 32 位 hex，安装结果里打印 | **自动** |
+| 节点密钥 | 面板节点详情里的 `webapi_key`（与 `so**_key` 同一串） | **客户填**（向导里粘进去；回车 = 本机随机生成，面板允许自定义才行） |
 | `type` / `api` | `xboard` / `webapi` | **固定** |
 | `check_interval` / `submit_interval` | `60` / `60` | **固定** |
 | `log_level` | `error` —— **只记错误日志** | **固定** |

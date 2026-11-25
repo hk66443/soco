@@ -233,12 +233,35 @@ def last_routes_line(svc):
     return '-'
 
 
+def resolve_pkg(c):
+    """项目目录：配置里的 pkg 可能过时（比如用 SO_DEST 装到别处），以实际位置为准。"""
+    here = Path(__file__).resolve().parent.parent
+    for p in (Path(c['pkg']), here, Path('/root/so')):
+        if (p / '_ops' / 'probe_many.py').is_file() or (p / 'packaging').is_dir():
+            return p
+    return Path(c['pkg'])
+
+
 def probe_script(c):
-    for p in (Path(c['bin_dir']) / 'probe_many.py', Path(c['pkg']) / '_ops' / 'probe_many.py',
-              Path(c['pkg']) / 'probe_many.py', Path('/root/soco-pkg/probe_many.py')):
+    for p in (Path(c['bin_dir']) / 'probe_many.py', resolve_pkg(c) / '_ops' / 'probe_many.py',
+              resolve_pkg(c) / 'probe_many.py', Path('/root/soco-pkg/probe_many.py')):
         if p.is_file():
             return p
     return None
+
+
+def elf_machine(path):
+    """ELF e_machine：62 = x86-64，183 = AArch64。"""
+    try:
+        b = Path(path).read_bytes()[:20]
+    except OSError:
+        return None
+    if b[:4] != b'\x7fELF':
+        return None
+    return int.from_bytes(b[18:20], 'little')
+
+
+ARCH_EM = {'amd64': 62, 'arm64': 183}
 
 
 def probe_client(c):
@@ -412,7 +435,7 @@ def write_conf(path, node_id, stype, url, key, inst_name='main'):
     return path
 
 
-def preflight(ctx=None, need_bin=True):
+def preflight(ctx=None, need_bin=True, allow_missing=False):
     c = ctx or cfg_load()
     probs = []
     if not is_root():
@@ -425,8 +448,16 @@ def preflight(ctx=None, need_bin=True):
     if need_bin:
         bd = Path(c['bin_dir'])
         for n in ('soco', 'libsoco.so'):
-            if not (bd / n).is_file():
-                probs.append('缺二进制 %s（见 DEPLOY.md §2）' % (bd / n))
+            f = bd / n
+            if not f.is_file():
+                if not allow_missing:
+                    probs.append('缺二进制 %s（见 DEPLOY.md §2）' % f)
+                continue
+            em = elf_machine(f)
+            want = ARCH_EM.get(arch())
+            if em and want and em != want:
+                probs.append('%s 架构不符：这是 %s 的二进制，当前机器是 %s'
+                             % (n, 'arm64' if em == 183 else 'amd64' if em == 62 else 'em%d' % em, arch()))
     return probs
 
 
@@ -436,18 +467,25 @@ def preflight_warn(ctx):
     if probe_client(ctx) is None:
         warns.append('缺探测客户端 sing-box-probe（probe / doctor 会用到，见 DEPLOY.md §2.1）')
     if probe_script(ctx) is None:
-        warns.append('缺 probe_many.py（install 会从 %s/_ops 拷，拷不到就手放）' % ctx['pkg'])
+        warns.append('缺 probe_many.py（install 会从项目 _ops/ 拷，拷不到就手放）')
     return warns
 
 
 def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
-           probe_after=True, in_wizard=False):
-    """幂等部署 / 修复。name='main' 部署主实例，其余部署 soco@<name> 实例。"""
+           probe_after=True, key_src='auto'):
+    """幂等部署 / 修复。name='main' 部署主实例，其余部署 soco@<name> 实例。
+
+    key_src：'panel'（客户从面板抄来的）/ 'reuse'（沿用已有配置）/ 'auto'（本机随机生成）
+    """
     n_steps = 7
     main_inst = (name == 'main')
     bd = Path(ctx['bin_dir'])
+    pkg = resolve_pkg(ctx)
     conf_path = Path(ctx['conf']) if main_inst else Path(ctx['inst_dir']) / ('%s.conf' % name)
     svc = ctx['service'] if main_inst else '%s@%s' % (ctx['service'], name)
+    key_note = {'panel': '（面板给的那串）',
+                'reuse': '（沿用已有配置，未改动）',
+                'auto': '（本机随机生成，需填到面板同一串）'}.get(key_src, '')
 
     head('部署 %s  %s' % (name, '(dry-run)' if dry else ''))
     kv('架构', arch())
@@ -456,12 +494,12 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
     kv('面板', url)
     kv('配置', str(conf_path))
     kv('单元', svc + '.service')
-    kv('密钥', key[:8] + '…' + key[-4:] + '  (需填到面板同一串)')
+    kv('节点密钥', key[:8] + '…' + key[-4:] + '  ' + key_note)
 
     i = 0
     i += 1
     step(i, n_steps, '环境预检', 'run')
-    probs = preflight(ctx, need_bin=not dry)
+    probs = preflight(ctx, need_bin=True, allow_missing=dry)
     if probs:
         step(i, n_steps, '环境预检', 'fail', '; '.join(probs))
         return 2
@@ -476,7 +514,6 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
             d.mkdir(parents=True, exist_ok=True)
         os.chmod(bd / 'soco', 0o755)
         os.chmod(bd / 'libsoco.so', 0o600)
-        pkg = Path(ctx['pkg'])
         for src, dst, mode in ((pkg / '_ops' / 'probe_many.py', bd / 'probe_many.py', 0o755),
                                (pkg / 'packaging' / 'soco-watchdog.py', bd / 'soco-watchdog.py', 0o755),
                                (pkg / 'packaging' / 'routes-guard.py', bd / 'routes-guard.py', 0o755),
@@ -484,6 +521,8 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
             if src.is_file():
                 shutil.copy2(src, dst)
                 os.chmod(dst, mode)
+        if pkg != Path(ctx['pkg']):
+            ctx['pkg'] = str(pkg)      # 记住实际项目目录，后续命令都好使
     step(i, n_steps, '目录与二进制', 'ok', 'soco %s' % (out(['du', '-h', str(bd / 'soco')]).split('\t')[0] or ''))
 
     i += 1
@@ -527,6 +566,7 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
         sh(['systemctl', 'daemon-reload'])
         sh(['systemctl', 'enable', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
         sh(['systemctl', 'start', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
+        time.sleep(2)                     # 先让 sink / dnat 就位，再起主服务
         if main_inst:
             sh(['systemctl', 'enable', 'soco-watchdog.service'])
             sh(['systemctl', 'enable', svc + '.service'])
@@ -558,6 +598,7 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
             warn('看日志： so-console logs %s 120' % svc)
 
     i += 1
+    failed = 0
     step(i, n_steps, '真实握手验证', 'run')
     if dry or not probe_after:
         step(i, n_steps, '真实握手验证', 'skip', 'dry-run' if dry else 'skipped')
@@ -565,6 +606,7 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
         script = bd / 'probe_many.py'
         if not script.is_file():
             step(i, n_steps, '真实握手验证', 'fail', 'probe_many.py 缺失')
+            failed += 1
         else:
             rc, s = sh(['python3', script, '3', '1,2,3'], timeout=300)
             line = [l for l in s.splitlines() if l.startswith('TOTAL')]
@@ -572,20 +614,27 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
                 step(i, n_steps, '真实握手验证', 'ok', line[0] if line else '3/3')
             else:
                 step(i, n_steps, '真实握手验证', 'fail', (line[0] if line else s.strip()[-60:]))
+                failed += 1
 
     head('完成')
     kv('服务', '%s.service (%s)' % (svc, svc_state(svc)))
     kv('配置', str(conf_path))
     kv('面板', url)
-    kv('节点密钥', key)
+    kv('节点密钥', '%s  %s' % (key, key_note))
     kv('下一步', 'so-console status / probe 3 / doctor')
-    warn('把上面这串节点密钥填进面板的 webapi_key 与 soga_key（不一致会拉不到用户）')
-    return 0
+    if key_src == 'auto':
+        warn('这串是本机随机生成的：要么把它填进面板的 webapi_key / soga_key，'
+             '要么用 --webapi-key <面板给的串> 重跑一次')
+    elif key_src == 'panel':
+        ok('已使用面板给的那串（面板与节点必须一致）')
+    if failed:
+        warn('%d 个步骤未通过，按上面的提示处理后重跑 install（幂等）' % failed)
+    return 0 if not failed else 1
 
 
 def wizard_target(ctx):
-    """交互式收集：只有 id / 协议 / 面板 三项，其余固定。"""
-    head('安装向导  只填三项，其余固定')
+    """交互式收集：节点 ID / 协议 / 面板地址 / 节点密钥（面板给的，可回车自动生成）。"""
+    head('安装向导  面板上的四项')
     node_id = ask('节点 ID', valid=r'\d+', hint='只能是数字')
     say('  协议  1) Shadowsocks 2022   2) VLESS + REALITY')
     pick = ask('选择', default='1', valid=r'[12]')
@@ -593,37 +642,43 @@ def wizard_target(ctx):
     url = ask('面板地址', default='https://', valid=r'https?://\S+',
               hint='形如 https://panel.example.com')
     url = url.rstrip('/')
+    say('  节点密钥 = 面板节点详情里的 webapi_key（与 soga_key 同一串）')
+    key = ask('节点密钥（回车 = 本机随机生成）', default='', valid=r'\S{8,}',
+              hint='至少 8 位、不能有空格；粘贴面板里的那串即可')
     say('')
     kv('固定：type', '%s / api=%s' % (FIXED['type'], FIXED['api']))
     kv('固定：间隔', 'pull/push %ss' % FIXED['check_interval'])
     kv('固定：日志', 'log_level=%s（只记错误）' % FIXED['log_level'])
     kv('固定：闸门', 'hosts + 本地 sink(38443) + nft dnat')
-    return node_id, stype, url
+    return node_id, stype, url, key
 
 
 # ══════════════════════════════════════════════════════════════ commands
 def cmd_install(c, a):
+    wizard_key = ''
     if getattr(a, 'node_id', None) and getattr(a, 'url', None):
         node_id, url = a.node_id, a.url.rstrip('/')
         stype = getattr(a, 'stype', None) or ('vless' if arch() == 'arm64' else 'ss')
     else:
-        node_id, stype, url = wizard_target(c)
+        node_id, stype, url, wizard_key = wizard_target(c)
     name = getattr(a, 'name', None) or 'main'
     conf_path = Path(c['conf']) if name == 'main' else Path(c['inst_dir']) / ('%s.conf' % name)
-    # 密钥：显式给了就用给的；否则沿用已有配置里的（重跑不能换 key，否则面板对不上 = 断服）
-    key = getattr(a, 'webapi_key', None) or ''
-    reused = False
+    # 密钥优先级：--webapi-key > 向导里贴的（面板给的） > 已有配置沿用 > 本机随机
+    key = getattr(a, 'webapi_key', None) or wizard_key or ''
+    key_src = 'panel' if key else ''
     if not key and conf_path.is_file():
         key = key_of(conf_path, 'webapi_key') or key_of(conf_path, 'soga_key')
-        reused = bool(key)
+        if key:
+            key_src = 'reuse'
+            ok('检测到已有配置，沿用原节点密钥（重跑不会换 key）')
     if not key:
         key = secrets.token_hex(16)
-    if reused:
-        ok('检测到已有配置，沿用原节点密钥（重跑不会换 key）')
+        key_src = 'auto'
     return deploy(c, node_id, stype, url, key, name=name, dry=getattr(a, 'dry_run', False),
-                  probe_after=not getattr(a, 'no_probe', False))
+                  probe_after=not getattr(a, 'no_probe', False), key_src=key_src)
 
 
+# ══════════════════════════════════════════════════════════════ commands
 def cmd_status(c, _a):
     svc = c['service']
     head('状态总览  %s' % time.strftime('%F %T'))
@@ -793,11 +848,13 @@ def cmd_inst(c, a):
             return 1
         if getattr(a, 'node_id', None) and getattr(a, 'url', None):
             node_id, stype, url = a.node_id, getattr(a, 'stype', None) or 'ss', a.url.rstrip('/')
+            wkey = ''
         else:
-            node_id, stype, url = wizard_target(c)
-        key = getattr(a, 'webapi_key', None) or secrets.token_hex(16)
+            node_id, stype, url, wkey = wizard_target(c)
+        key = getattr(a, 'webapi_key', None) or wkey or secrets.token_hex(16)
+        key_src = 'panel' if (getattr(a, 'webapi_key', None) or wkey) else 'auto'
         return deploy(c, node_id, stype, url, key, name=name, dry=getattr(a, 'dry_run', False),
-                      probe_after=not getattr(a, 'no_probe', False))
+                      probe_after=not getattr(a, 'no_probe', False), key_src=key_src)
     if act in ('start', 'stop', 'restart', 'log', 'remove', 'enable', 'disable'):
         name = getattr(a, 'name', None) or ask('实例名', valid=r'[a-z0-9_]{2,16}')
         sv = inst_service(c, name)
@@ -827,8 +884,9 @@ def cmd_logs(c, a):
     return 0
 
 
-def cmd_backup(c, _a):
+def cmd_backup(c, a):
     head('备份')
+    keep = getattr(a, 'keep', None)
     ts = time.strftime('%Y%m%d-%H%M%S')
     dst = Path('/root/so-backup-%s.tar.gz' % ts)
     with tarfile.open(dst, 'w:gz') as t:
@@ -836,6 +894,13 @@ def cmd_backup(c, _a):
             if Path(p).exists():
                 t.add(p)
     ok('%s（%d KB）' % (dst, dst.stat().st_size // 1024))
+    if keep:
+        olds = sorted(Path('/root').glob('so-backup-*.tar.gz'))
+        for old in olds[:-int(keep)] if int(keep) > 0 else []:
+            old.unlink(missing_ok=True)
+            kv('已清理', old.name)
+    left = sorted(Path('/root').glob('so-backup-*.tar.gz'))
+    kv('现有备份', '%d 个' % len(left))
     return 0
 
 
@@ -1037,7 +1102,10 @@ def build_parser():
     pb = sub.add_parser('rollback', add_help=False)
     pb.add_argument('file', nargs='?')
 
-    for name in ('status', 'users', 'gate', 'doctor', 'verify', 'backup', 'paths', 'help'):
+    pbk = sub.add_parser('backup', add_help=False)
+    pbk.add_argument('--keep', type=int)
+
+    for name in ('status', 'users', 'gate', 'doctor', 'verify', 'paths', 'help'):
         sub.add_parser(name, add_help=False)
     return p
 

@@ -105,8 +105,11 @@ scp -r ./soco root@<SERVER_IP>:/root/so
    节点侧不写死；
 5. 把用户/套餐挂到这个节点上（用户数在面板上调，节点侧每 60 s 拉一次）。
 
-**节点密钥由控制台自动生成**（32 位随机 hex），安装完成后把它填回面板的 `webapi_key` 与 `so**_key`（两边必须一致，否则拉不到用户）。
-如果面板已经给了一对 key，安装时用 `--webapi-key <串>` 覆盖即可，不用改配置。
+**节点密钥 = 面板节点详情里那串 `webapi_key`**（与 `so**_key` 同一串，面板与节点必须一致）。
+安装向导会问它，粘进去最稳；`--webapi-key <串>` 等价写法。
+
+如果面板允许自定义密钥（或你暂时不接面板），向导里回车留空即由本机随机生成 32 位 hex，
+装完把打印出来的值填回面板即可。
 
 > 配置文件由控制台写（`0600`），内容固定：
 >
@@ -119,18 +122,18 @@ scp -r ./soco root@<SERVER_IP>:/root/so
 > server_type=<ss|vless> # 安装时选
 > node_id=<节点ID>        # 安装时填
 > webapi_url=<面板地址>    # 安装时填
-> webapi_key=<自动生成>    # 自动
-> so\*\*_key=<自动生成>      # 自动
+> webapi_key=<面板给的串 / 留空则随机>    # 客户填（或随机）
+> so\*\*_key=<同一串>                       # 与 webapi_key 相同
 > ```
 >
 > 要看真实路径：`so-console paths`。**不要手写这份配置**，用 `so-console install` 覆盖即可（幂等）。
 
 ---
 
-## 5. 安装（向导只问三项，其余全固定）
+## 5. 安装（向导问四项：节点 ID / 协议 / 面板地址 / 节点密钥）
 
 ```bash
-/root/so/console/so-console install          # 向导：节点 ID → 协议 → 面板地址
+/root/so/console/so-console install          # 向导：节点 ID → 协议 → 面板地址 → 节点密钥
 ```
 
 ```
@@ -138,16 +141,18 @@ scp -r ./soco root@<SERVER_IP>:/root/so
   协议  1) Shadowsocks 2022   2) VLESS + REALITY
   选择 [1]: 1
   面板地址 [https://]: https://panel.example.com
+  节点密钥 = 面板节点详情里的 webapi_key（与 so**_key 同一串）
+  节点密钥（回车 = 本机随机生成） [ ]: <粘贴面板里那串>
 ```
 
-**客户只填这三项**，其余由控制台固定并自动完成：
+**客户填四项**（节点 ID / 协议 / 面板地址 / 节点密钥），其余由控制台固定并自动完成：
 
 | 固定项 | 值 |
 |---|---|
 | `type` / `api` | `xboard` / `webapi` |
 | `check_interval` / `submit_interval` | `60` / `60` |
 | **日志** | `log_level=error` —— **只记错误**，不刷流量流水 |
-| 节点密钥 | **自动生成**（32 位随机 hex），结果里大字打印；面板已有值就 `--webapi-key <串>` 覆盖 |
+| 节点密钥 | **客户填**：面板节点详情里的 `webapi_key`（与 `so**_key` 同一串）；留空则本机随机生成（装完回填面板） |
 | 闸门 | hosts 4 条 + 本地 sink(`38443`) + nft `127.0.0.1:443→38443` |
 | 单元 | `soco.service` / `soco@.service` / sink / nft / watchdog 共 5 个 |
 
