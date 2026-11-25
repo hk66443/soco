@@ -164,6 +164,7 @@ ln -sf /root/so/console/so-console /usr/local/bin/so-console
 > `webapi_key` 是**面板与节点之间的通信密钥**：填错/随机都会导致节点拉不到用户，必须以面板里的为准。
 > `so**_key` 是**授权密钥**：本工程已解除授权检查，随机串即可。
 > 重跑 `install` 会沿用已有配置里的 `webapi_key`，不会把它换掉。
+> 文档里出现的 `so**` 是屏蔽后的程序名，配置文件与授权字段分别是 `so**.conf` / `so**_key`（真实路径看 `so-console paths`）。
 
 ---
 

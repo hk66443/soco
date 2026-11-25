@@ -1,5 +1,10 @@
 # CONFIG · 配置文件在哪、每个字段谁写、证书怎么弄
 
+> **占位说明**：文档里 `so**` 代指被屏蔽的程序名（真实路径看 `so-console paths`）。
+> - `so**.conf` = 该程序的主配置文件（`paths` 里的 `conf` 就是它）
+> - `so**_key` = 该程序配置里的**授权密钥**字段
+> - `webapi_key` / `webapi_url` / `node_id` 等不含屏蔽，按原样填
+>
 > 结论先给：**机场/主控信息都写在 `/etc/so**/so**.conf`**（真实路径用 `so-console paths` 看），
 > 多机场则是 `/etc/so**/<实例名>.conf`；证书在 `/usr/local/soco/cert/` 或你自己给的路径。
 
