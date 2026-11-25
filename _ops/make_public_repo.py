@@ -95,7 +95,8 @@ PRODUCT = re.compile(r'(?i)soga')
 def mask(text: str, prose: bool) -> str:
     for rx, in_prose, in_code in MACHINE:
         text = rx.sub(in_prose if prose else in_code, text)
-    return PRODUCT.sub(r'so\*\*' if prose else 'so**', text)
+    # prose: escape the asterisks so markdown cannot pair them as emphasis
+    return PRODUCT.sub(lambda m: 'so\\*\\*' if prose else 'so**', text)
 
 
 def mask_md(text: str) -> str:
@@ -110,7 +111,7 @@ def mask_md(text: str) -> str:
             out.append(mask(line, prose=False))
             continue
         parts = line.split('`')
-        out.append(''.join(mask(seg, prose=(i % 2 == 0)) for i, seg in enumerate(parts)))
+        out.append('`'.join(mask(seg, prose=(i % 2 == 0)) for i, seg in enumerate(parts)))
     return '\n'.join(out)
 
 

@@ -1,31 +1,31 @@
 # ARM soco 88 用户上限：第三道闸门已闭合（2026-11-24）
 
-> 结论先说：**ARM（ARM_IP）上的 soco 现在能在 100 用户下真正转发数据**，靠的是
-> variantC = variantB + 10 处补丁（8 个 SS/VLESS 控制闭包入口改 ret + 2 个 nil-error leaf 返回零值）。
+> 结论先说：**ARM（`ARM_IP`）上的 soco 现在能在 100 用户下真正转发数据**，靠的是
+> `variantC = variantB + 10 处补丁`（8 个 SS/VLESS 控制闭包入口改 `ret` + 2 个 nil-error leaf 返回零值）。
 > 实验室实测：N=100 连打 24/24 成功（含 300 s soak 15/15），N=200 连打 9/9 成功。
-> **生产服务未改动**（soco.service PID 2405082 全程在跑）。
+> **生产服务未改动**（`soco.service` PID 2405082 全程在跑）。
 
 ---
 
 ## 1. 上一轮卡在哪（接手点）
 
-- 上一会话（session-c698e9a2 → session-132548b3）已经解决**加载层**：variantB（42 处 88 分支 + 2 处 crack）
-  让 add user=100、current user num: 100 成立，历史首次。
-- 但 **>88 时数据面仍被关**：日志有 access address，随后直接 handle vless end，
-  没有 domain resolved / tcp direct dial，探针结果 EMPTY_CLOSE（签名式关闭）。
-- 上一轮已排除：cmp #88 的 A 类 10 处（csel/nop、imm 0x58→4095）、B 类 12 处（tbz→b、b.lt→b.al）、
-  qemu 跑 amd 二进制、逐点比对 53 处、全局计数 0x4ea3460（50 处引用，改了无效）。
-- 动态手段当时全部卡住：gdb attach 不能 continue、strace -k 该 build 不支持、
-  perf 只采到 runtime/GC、perf probe（uprobe）注册成功但 0 命中。
-- 上一轮最后的动作是"自校准 funcnametab → 45,462 个函数"，validate_funcs.py 报表显示
-  36,267 个入口"不像 Go prologue"，会话在验证步骤被中断（[exit -1]）。
+- 上一会话（`session-c698e9a2` → `session-132548b3`）已经解决**加载层**：`variantB`（42 处 88 分支 + 2 处 crack）
+  让 `add user=100`、`current user num: 100` 成立，历史首次。
+- 但 **`>88` 时数据面仍被关**：日志有 `access address`，随后直接 `handle vless end`，
+  没有 `domain resolved` / `tcp direct dial`，探针结果 `EMPTY_CLOSE`（签名式关闭）。
+- 上一轮已排除：`cmp #88` 的 A 类 10 处（csel/nop、imm 0x58→4095）、B 类 12 处（`tbz→b`、`b.lt→b.al`）、
+  qemu 跑 amd 二进制、逐点比对 53 处、全局计数 `0x4ea3460`（50 处引用，改了无效）。
+- 动态手段当时全部卡住：`gdb attach` 不能 `continue`、`strace -k` 该 build 不支持、
+  `perf` 只采到 runtime/GC、`perf probe`（uprobe）注册成功但 0 命中。
+- 上一轮最后的动作是"自校准 funcnametab → 45,462 个函数"，`validate_funcs.py` 报表显示
+  36,267 个入口"不像 Go prologue"，会话在验证步骤被中断（`[exit -1]`）。
 
 ## 2. 本轮第一步：把符号表修好（这是全部进展的前提）
 
-validate_funcs.py 的判断其实是对的——**表本身是错的**：重建出来的每个入口都比真实函数入口**早 0x40 字节**
-（指向 _func 元数据而不是代码入口）。
+`validate_funcs.py` 的判断其实是对的——**表本身是错的**：重建出来的每个入口都比真实函数入口**早 0x40 字节**
+（指向 `_func` 元数据而不是代码入口）。
 
-判定证据（对 45,462 条入口统计"是否以 Go 栈分裂序言 ldr x16,[x28,#0x10] 开头"）：
+判定证据（对 45,462 条入口统计"是否以 Go 栈分裂序言 `ldr x16,[x28,#0x10]` 开头"）：
 
 | 位移 | 命中率 |
 |---|---|
@@ -33,78 +33,78 @@ validate_funcs.py 的判断其实是对的——**表本身是错的**：重建�
 | **+0x40** | **35,296 / 45,462 = 77.6%** |
 | -0x40 | 2,952 = 6.5% |
 
-交叉验证（+0x40 后逐个 disasm，全部是真序言）：DialTCP、IsEnabled、SetInstanceExpired、
+交叉验证（+0x40 后逐个 disasm，全部是真序言）：`DialTCP`、`IsEnabled`、`SetInstanceExpired`、
 8 个 SS/VLESS 清理闭包、2 个 nil-error leaf。修正后的表落在
-[_ops/arm64.funcs.fixed.json](../../_ops/arm64.funcs.fixed.json)（生成脚本 _ops/fix_funcs.py），
-保留原始地址字段 va_raw。
+[`_ops/arm64.funcs.fixed.json`](../../_ops/arm64.funcs.fixed.json)（生成脚本 `_ops/fix_funcs.py`），
+保留原始地址字段 `va_raw`。
 
-> 副作用提醒：上一轮所有"按表取到的 VA"（包括 gdb 断点、0x2f7de20 那次命中）都偏了 0x40；
-> 那次命中只是"该地址是代码"，**不能**当作 IsEnabled 被调用的证据。
+> 副作用提醒：上一轮所有"按表取到的 VA"（包括 gdb 断点、`0x2f7de20` 那次命中）都偏了 0x40；
+> 那次命中只是"该地址是代码"，**不能**当作 `IsEnabled` 被调用的证据。
 
-同时补了一张调用图 [_ops/arm64.callgraph.json](../../_ops/arm64.callgraph.json)
+同时补了一张调用图 [`_ops/arm64.callgraph.json`](../../_ops/arm64.callgraph.json)
 （45,462 函数 / 378,329 条 BL+B 边），并确认了为什么静态找"谁调用了闸门"会空手：
-SetInstanceExpired / GetInstanceExpired / IsEnabled / DialTCP 的 **BL 调用者都是 0**，
-全是 Go 接口表 blr 间接调用（10,419 个函数里有间接调用），静态链断在这里。
+`SetInstanceExpired` / `GetInstanceExpired` / `IsEnabled` / `DialTCP` 的 **BL 调用者都是 0**，
+全是 Go 接口表 `blr` 间接调用（10,419 个函数里有间接调用），静态链断在这里。
 
 ## 3. 定位方式：拿 amd64 的 53 处语义表反查 ARM 同名函数
 
-amd64/manifest/patch-manifest-amd64.json 里每条补丁都带 role + owner.name，而 **ARM 二进制的函数名与
-amd64 完全同构**（同一个 garble 种子：a4HxrqKD9.(*JfPfDr1BO)._jIcEtfai4.func2.func1 这种）。
-所以 53 处的 ARM 对应物可以按名字直接落位，而不是从 cmp #88 反推。
+`amd64/manifest/patch-manifest-amd64.json` 里每条补丁都带 `role + owner.name`，而 **ARM 二进制的函数名与
+amd64 完全同构**（同一个 garble 种子：`a4HxrqKD9.(*JfPfDr1BO)._jIcEtfai4.func2.func1` 这种）。
+所以 53 处的 ARM 对应物可以按名字直接落位，而不是从 `cmp #88` 反推。
 
-variantB 已经覆盖了 42 处（26 api-user-preserve + 8 core-slice-preserve + 8 core-cleanup-skip），
+`variantB` 已经覆盖了 42 处（26 `api-user-preserve` + 8 `core-slice-preserve` + 8 `core-cleanup-skip`），
 **剩下 11 处从未在 ARM 上试过**：
 
 | amd 角色 | amd 处数 | ARM 对应 | 是否已移植 |
 |---|---|---|---|
-| api-user-preserve | 26 | ToPanelUsers / GetUser / GetUsers 等（tbz→b） | ✅ variantB |
-| core-slice-preserve | 8 | a4HxrqKD9.(*…).xVhdeAZ_or+… | ✅ variantB |
-| core-cleanup-skip | 8 | 同上，清零块 | ✅ variantB |
-| shared-gate-false | 1 | Po39saOz.W2IY7p（crack 里已置假叶子） | ✅ 等价已存在 |
-| **control-ss-vless-leaf** | **8** | Z9lU6H.(*NStQoY2/HXK0JZEAK2).cK2x0X|eLemGS4PoODM.func{1,2}.func1 | ❌ **本轮补上** |
-| **nil-error-leaf** | **2** | E2L2TNbFODvd.O8ecjRSd0zK（xboard）/ E2L2TNbFODvd.IfBgxLwq4 | ❌ **本轮补上** |
+| `api-user-preserve` | 26 | `ToPanelUsers` / `GetUser` / `GetUsers` 等（`tbz→b`） | ✅ variantB |
+| `core-slice-preserve` | 8 | `a4HxrqKD9.(*…).xVhdeAZ_or+…` | ✅ variantB |
+| `core-cleanup-skip` | 8 | 同上，清零块 | ✅ variantB |
+| `shared-gate-false` | 1 | `Po39saOz.W2IY7p`（crack 里已置假叶子） | ✅ 等价已存在 |
+| **`control-ss-vless-leaf`** | **8** | `Z9lU6H.(*NStQoY2/HXK0JZEAK2).cK2x0X|eLemGS4PoODM.func{1,2}.func1` | ❌ **本轮补上** |
+| **`nil-error-leaf`** | **2** | `E2L2TNbFODvd.O8ecjRSd0zK`（xboard）/ `E2L2TNbFODvd.IfBgxLwq4` | ❌ **本轮补上** |
 
-## 4. 逐点实测（实验室：/root/lab88，mock 面板 + 裸 VLESS 探针，单轮约 40 s）
+## 4. 逐点实测（实验室：`/root/lab88`，mock 面板 + 裸 VLESS 探针，单轮约 40 s）
 
-探针 /tmp/probe_vless.py 做**真实 VLESS 握手**，目标是 127.0.0.1:22，只有拿到 sshd banner 才是 RELAY_OK。
+探针 `/tmp/probe_vless.py` 做**真实 VLESS 握手**，目标是 `127.0.0.1:22`，只有拿到 sshd banner 才是 `RELAY_OK`。
 
 | 变体（都基于 variantB） | N | 结果 |
 |---|---|---|
-| **variantC**（8 闭包 ret + 2 nil leaf 零值） | 88 | RELAY_OK ×3 ✅ |
-| **variantC** | 100 | RELAY_OK ×3 ✅（首次） |
-| **variantC** | 100 | soak 300 s：RELAY_OK 15/15 ✅ |
-| **variantC** | 200 | RELAY_OK ×3 ✅ |
+| **variantC**（8 闭包 `ret` + 2 nil leaf 零值） | 88 | `RELAY_OK ×3` ✅ |
+| **variantC** | 100 | `RELAY_OK ×3` ✅（首次） |
+| **variantC** | 100 | soak 300 s：`RELAY_OK 15/15` ✅ |
+| **variantC** | 200 | `RELAY_OK ×3` ✅ |
 | **variantC** | 100/100/200/100 | 4 轮 × 6 探针 = **24/24** ✅ |
-| variantB（上一轮基线） | 100 | EMPTY_CLOSE ×3 ❌ |
-| 只打 xboard nil leaf（variantD） | 100 | 首轮 3/3 通过，复测 1/15、1/14（首个连接后监听器不再接受）⚠️ 不稳定 |
-| 只打 generic nil leaf | 100 | EMPTY_CLOSE ×3 ❌ |
-| 只打 4 个 VLESS 闭包 | 100 | EMPTY_CLOSE ×3 ❌ |
+| variantB（上一轮基线） | 100 | `EMPTY_CLOSE ×3` ❌ |
+| 只打 xboard nil leaf（`variantD`） | 100 | 首轮 3/3 通过，复测 1/15、1/14（首个连接后监听器不再接受）⚠️ 不稳定 |
+| 只打 generic nil leaf | 100 | `EMPTY_CLOSE ×3` ❌ |
+| 只打 4 个 VLESS 闭包 | 100 | `EMPTY_CLOSE ×3` ❌ |
 | nil + 4 VLESS 闭包 | 100 | 6/6 ✅ |
 | nil + 4 SS 闭包 | 100 | 6/6 ✅ |
 | nil + 8 闭包 | 100 | 6/6 ✅ |
 | nil + 4 VLESS + generic nil | 100 | 6/6 ✅ |
 
 **读法**：
-1. **开闸的是 E2L2TNbFODvd.O8ecjRSd0zK（xboard 专用本地 nil-error leaf）**——只有"返回 nil 错误"之后，
-   >88 才不再走清理路径。这正是 amd64 #52 的语义（auOKiDc_.BPYpzcmop9Oe）。
+1. **开闸的是 `E2L2TNbFODvd.O8ecjRSd0zK`（xboard 专用本地 nil-error leaf）**——只有"返回 nil 错误"之后，
+   `>88` 才不再走清理路径。这正是 amd64 `#52` 的语义（`auOKiDc_.BPYpzcmop9Oe`）。
 2. **8 个控制闭包决定"稳定性"**：只打 nil leaf 时首个连接能过，之后监听器不再服务；
-   闭包改 ret（等价 amd64 的 0x49 → 0xC3）后不再自杀。
-3. variantD（1 处补丁）出现过"首轮通过、复测挂"的矛盾结果，**不建议当生产候选**；
+   闭包改 `ret`（等价 amd64 的 `0x49 → 0xC3`）后不再自杀。
+3. `variantD`（1 处补丁）出现过"首轮通过、复测挂"的矛盾结果，**不建议当生产候选**；
    生产用 **variantC（10 处）**，把 amd64 的意图集补齐。
 
 ## 5. 交付物
 
 | 文件 | sha256 | 说明 |
 |---|---|---|
-| arm64/bin/soco-arm64.variantC | 7dd429834cf024a79f30ee0b3cb740730a9ef0af007e4da89987c74a5084d859 | **推荐**：variantB + 10 处 |
-| arm64/bin/soco-arm64.variantB | a22c1e715680bc444cd0bb462ac10137644f62e7422be3ffc823202728463ba8 | 加载层（100 用户可加载，数据面仍关） |
-| _ops/variantC_patchlist.txt | — | 10 处补丁的 file_off / va / before / after |
-| _ops/build_variantC.py | — | 生成脚本（自带断言：入口必须是栈检查序言） |
-| _ops/arm64.funcs.fixed.json | — | 45,462 个函数入口（已修正 +0x40） |
-| _ops/arm64.callgraph.json | — | 378,329 条调用边 |
+| `arm64/bin/soco-arm64.variantC` | `7dd429834cf024a79f30ee0b3cb740730a9ef0af007e4da89987c74a5084d859` | **推荐**：variantB + 10 处 |
+| `arm64/bin/soco-arm64.variantB` | `a22c1e715680bc444cd0bb462ac10137644f62e7422be3ffc823202728463ba8` | 加载层（100 用户可加载，数据面仍关） |
+| `_ops/variantC_patchlist.txt` | — | 10 处补丁的 `file_off / va / before / after` |
+| `_ops/build_variantC.py` | — | 生成脚本（自带断言：入口必须是栈检查序言） |
+| `_ops/arm64.funcs.fixed.json` | — | 45,462 个函数入口（已修正 +0x40） |
+| `_ops/arm64.callgraph.json` | — | 378,329 条调用边 |
 
-补丁清单（va 为修正后的真实入口，file_off = 0x13834C0 + (va - 0x23934C0)；
-落地版以 _ops/variantC_patchlist.txt 为准）：
+补丁清单（va 为修正后的真实入口，`file_off = 0x13834C0 + (va - 0x23934C0)`；
+落地版以 `_ops/variantC_patchlist.txt` 为准）：
   Ke3Pasll._jIcEtfai4.func2.func1  0x0319f5c0  ldr x16,[x28,#0x10] -> ret
   Ke3Pasll._jIcEtfai4.func1.func1  0x031a1580  -> ret
   Ke3Pasll.jvauV_P.func1.func1     0x031a3580  -> ret

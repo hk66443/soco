@@ -1,19 +1,22 @@
 # soco 节点工程 · amd64 + arm64（含控制台）
 
-一套可直接部署到**任意新机器**的节点工程包：so** v2.18.1 兼容节点程序的深度改造 +
-一个单文件控制台（console/so-console）。解决的问题只有两个：
+一套可直接部署到**任意新机器**的节点工程包：`so** v2.18.1` 兼容节点程序的深度改造 +
+一个单文件控制台（`console/so-console`）。解决的问题只有两个：
 
 | 问题 | 现象 | 本工程的做法 |
 |---|---|---|
-| **88 用户上限** | 面板下发 >88 个用户时，只 add user 到 88 | 二进制补丁（amd64 53 区域 / arm64 10 处控制闭包）+ 适配层 libsoco.so |
+| **88 用户上限** | 面板下发 >88 个用户时，只 `add user` 到 88 | 二进制补丁（amd64 53 区域 / arm64 10 处控制闭包）+ 适配层 `libsoco.so` |
 | **600 秒授权闸门** | 跑满 600 s 后认证照过、但**不转发**（新连接全挂） | 让授权检查"快速失败"（hosts + 本地 sink + nft 分流转发），不动业务逻辑 |
 
-两台真实机器的实测结果（细节在 docs/ 与各架构 evidence/）：**497 个用户逐个独立握手 + 真实转发，497/497 全过**，
-服务端 497 authenticated / 497 relayed / 0 auth failed，NRestarts=0。
+两台真实机器的实测结果（细节在 `docs/` 与各架构 `evidence/`）：**497 个用户逐个独立握手 + 真实转发，497/497 全过**，
+服务端 `497 authenticated / 497 relayed / 0 auth failed`，`NRestarts=0`。
 
-> **关于 so****：教程里把程序名统一写成 so**（不出现完整产品名）。凡是路径、变量、命令里出现 so**，
-> 都指代同一个名字；真实路径不用记，用 so-console paths 打出来即可。所有 IP / node id 也都是占位符，
+> 说明：教程里程序名统一写成 `so**`（不出现完整产品名）。凡是路径、变量、命令里出现 `so**`，
+> 都指代同一个名字；真实路径不用记，用 `so-console paths` 打出来即可。所有 IP / node id 也都是占位符，
 > 换成你自己的；占位符清单见 [SECURITY.md](SECURITY.md)。
+>
+> 代码块里的 `so**` 属于**屏蔽占位**，直接照抄会跑不通 —— 要么换成你机器上的真实名字，
+> 要么用控制台（`so-console install / paths / routes ...`），它内部已经知道真实路径。
 
 ---
 
@@ -31,7 +34,7 @@ scp -r ./soco root@<你的服务器>:/root/so
 /root/so/console/so-console doctor
 ```
 
-不带参数运行 so-console 就是**交互控制台**：
+不带参数运行 `so-console` 就是**交互控制台**：
 
 ```
  so-console · amd64 · 2026-01-01 12:00:00
@@ -54,7 +57,7 @@ scp -r ./soco root@<你的服务器>:/root/so
 so> 
 ```
 
-也可以直接敲命令，脚本/自动化同样适用：so-console status、so-console probe 497、so-console routes switch tw。
+也可以直接敲命令，脚本/自动化同样适用：`so-console status`、`so-console probe 497`、`so-console routes switch tw`。
 
 ---
 
@@ -62,12 +65,12 @@ so>
 
 | | **amd64**（x86_64） | **arm64**（aarch64） |
 |---|---|---|
-| 典型协议 | Shadowsocks 2022（2022-blake3-aes-256-gcm） | VLESS + REALITY（xtls-rprx-vision） |
-| 二进制 | 53 区域补丁版 | **variantE**（variantC + 8 处 mov #3→xzr） |
-| 适配层 | 必需：LD_PRELOAD=libsoco.so 抓全量用户表 | 同样加载 libsoco.so（aarch64 版） |
+| 典型协议 | Shadowsocks 2022（`2022-blake3-aes-256-gcm`） | VLESS + REALITY（`xtls-rprx-vision`） |
+| 二进制 | 53 区域补丁版 | **variantE**（variantC + 8 处 `mov #3→xzr`） |
+| 适配层 | 必需：`LD_PRELOAD=libsoco.so` 抓全量用户表 | 同样加载 `libsoco.so`（aarch64 版） |
 | 88 上限解法 | 补丁 + 适配层 | 10 处控制闭包补丁 |
 | 600 s 闸门 | 环境旁路（hosts + sink + nft） | 环境旁路 **+** 补回 8 处补丁 |
-| 分流 routes.toml | 通常不用 | 常用（NF/ChatGPT 走指定地区出口） |
+| 分流 `routes.toml` | 通常不用 | 常用（NF/ChatGPT 走指定地区出口） |
 | 内存要求 | ≥1 GB（单实例 ≈80 MB，压测时别叠实例） | ≥2 GB（单实例 ≈95 MB） |
 | 实测规模 | 497 用户 / 串行全量约 20 min | 497 用户 / 串行全量约 7 min |
 
@@ -101,8 +104,8 @@ soco/
 └── _ops/                     ← 实战脚本：probe_many.py、build_variant*.py、隧道、跑批
 ```
 
-**二进制不在仓库里**（每个 80–90 MB）：要么用 _ops/build_variant*.py 从原版重建，
-要么从旧机器的 /usr/local/soco/ 备份取回。见 [DEPLOY.md](DEPLOY.md) §2。
+**二进制不在仓库里**（每个 80–90 MB）：要么用 `_ops/build_variant*.py` 从原版重建，
+要么从旧机器的 `/usr/local/soco/` 备份取回。见 [DEPLOY.md](DEPLOY.md) §2。
 
 ---
 
@@ -115,8 +118,8 @@ soco/
 /root/so/console/so-console doctor         # 期望 ALL PASS
 ```
 
-ss -lnt、nc -z、ping 端口 全部**不可信**：闸门打开时端口照样 LISTEN，accept 后立即 close、不读字节，
-已建立的旧连接也仍然活着。这就是为什么本工程所有验证都走真实握手（[_ops/probe_many.py](_ops/probe_many.py)）。
+`ss -lnt`、`nc -z`、`ping 端口` 全部**不可信**：闸门打开时端口照样 LISTEN，accept 后立即 close、不读字节，
+已建立的旧连接也仍然活着。这就是为什么本工程所有验证都走真实握手（[`_ops/probe_many.py`](_ops/probe_many.py)）。
 
 ---
 
@@ -127,13 +130,13 @@ ss -lnt、nc -z、ping 端口 全部**不可信**：闸门打开时端口照样 
 | 新机器从零装一套（amd64 或 arm64） | [DEPLOY.md](DEPLOY.md) |
 | 记不住命令 / 想用控制台操作 | [CONSOLE.md](CONSOLE.md) |
 | 上线后回滚、卸载、换机 | [DEPLOY.md](DEPLOY.md) §9 / §10 |
-| 为什么这么改、怎么排错到字节级 | [BYPASS.md](BYPASS.md)、*/evidence/ |
+| 为什么这么改、怎么排错到字节级 | [BYPASS.md](BYPASS.md)、`*/evidence/` |
 | 交接给下一个人 / 下一个 AI | [HANDOFF.md](HANDOFF.md) |
 | 仓库里的占位符怎么填自己的值 | [SECURITY.md](SECURITY.md) |
 
 ## 6. 使用边界
 
-1. 600 s 闸门**没有**从二进制里彻底移除，靠 hosts + 本地 sink 维持；so-console doctor 会逐项检查，缺一项就退回"600 s 后新连接全断"。
+1. `600 s` 闸门**没有**从二进制里彻底移除，靠 hosts + 本地 sink 维持；`so-console doctor` 会逐项检查，缺一项就退回"600 s 后新连接全断"。
 2. 一台机**不要**同时跑两个实例压满人数：适配层状态会互相顶掉。要多机场就多开机器，或独立目录 + 独立端口 + 不同时打满。
-3. routes.toml 是**模板**（含 {Out}/{OutPort} 等占位符），写坏会**静默**退回 0 条——so-console routes validate 后再 list 看 loaded 那一行。
+3. `routes.toml` 是**模板**（含 `{Out}/{OutPort}` 等占位符），写坏会**静默**退回 0 条——`so-console routes validate` 后再 `list` 看 `loaded` 那一行。
 4. 本工程针对闭源商业程序做了逆向与补丁，仅供你在**自己已授权**的环境使用。

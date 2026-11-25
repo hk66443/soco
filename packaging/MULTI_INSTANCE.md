@@ -1,6 +1,6 @@
 # soco 多实例与 so\*\* 兼容配置（不用 docker）
 
-> 目标：**程序叫 soco，配置与流媒体目录沿用 so\*\***（/etc/so**/），这样 nfu / so\*\* 生态的脚本（nfu so**、routes.toml、blockList、dns.yml、geoip.dat）可以直接改、直接生效；同时支持 so\*\* 那套「一实例一配置」的多实例方式。
+> 目标：**程序叫 soco，配置与流媒体目录沿用 so\*\***（`/etc/so**/`），这样 nfu / so\*\* 生态的脚本（`nfu so**`、`routes.toml`、`blockList`、`dns.yml`、`geoip.dat`）可以直接改、直接生效；同时支持 so\*\* 那套「一实例一配置」的多实例方式。
 
 ## 1. 为什么不用额外适配
 
@@ -10,31 +10,31 @@ soco 就是 so\*\* 2.18.1 的后端（加 soco 适配层），它的默认配置
 -c 的默认值 = /etc/so**/so**.conf
 ```
 
-/usr/local/soco/soco -h 里能看到：
+`/usr/local/soco/soco -h` 里能看到：
 
 ```
   -c string
         Set config file (default "/etc/so**/so**.conf")
 ```
 
-所以 soco 不加参数运行时，行为和 so** 完全一样，读的是同一份 /etc/so**/so**.conf、同一份 /etc/so**/routes.toml。
+所以 `soco` 不加参数运行时，行为和 `so**` 完全一样，读的是同一份 `/etc/so**/so**.conf`、同一份 `/etc/so**/routes.toml`。
 
 ## 2. 文件布局
 
 | 路径 | 作用 |
 |---|---|
-| /usr/local/soco/soco | 主程序（= so\*\* 2.18.1 + 补丁） |
-| /usr/local/soco/libsoco.so | LD_PRELOAD 适配层（解除 88 人上限等） |
-| /etc/so**/so**.conf | **主实例配置**（soco.service 不带 -c，用默认值） |
-| /etc/so**/<name>.conf | 其它实例配置（soco@<name>.service 用 -c 指向它） |
-| /etc/so**/instances/<name>/ | 实例私有目录：log_file_dir / ip_user_cache_save_dir / access_log_dir |
-| /etc/so**/routes.toml | 流媒体路由（多实例共享；nfu 直接写这里） |
-| /etc/so**/{blockList,whiteList,dns.yml,geoip.dat,geosite.dat} | 共享数据文件 |
-| /etc/systemd/system/soco.service | 主实例单元 |
-| /etc/systemd/system/soco@.service | 多实例模板（-c /etc/so**/%i.conf） |
-| /usr/bin/soco | 管理脚本 |
+| `/usr/local/soco/soco` | 主程序（= so\*\* 2.18.1 + 补丁） |
+| `/usr/local/soco/libsoco.so` | `LD_PRELOAD` 适配层（解除 88 人上限等） |
+| `/etc/so**/so**.conf` | **主实例配置**（`soco.service` 不带 `-c`，用默认值） |
+| `/etc/so**/<name>.conf` | 其它实例配置（`soco@<name>.service` 用 `-c` 指向它） |
+| `/etc/so**/instances/<name>/` | 实例私有目录：`log_file_dir` / `ip_user_cache_save_dir` / `access_log_dir` |
+| `/etc/so**/routes.toml` | 流媒体路由（多实例共享；nfu 直接写这里） |
+| `/etc/so**/{blockList,whiteList,dns.yml,geoip.dat,geosite.dat}` | 共享数据文件 |
+| `/etc/systemd/system/soco.service` | 主实例单元 |
+| `/etc/systemd/system/soco@.service` | 多实例模板（`-c /etc/so**/%i.conf`） |
+| `/usr/bin/soco` | 管理脚本 |
 
-旧的 /etc/soco/soco.conf 只作为备份保留，不再被任何单元引用（内容与 /etc/so**/so**.conf 相同，迁移可回滚）。
+旧的 `/etc/soco/soco.conf` 只作为备份保留，不再被任何单元引用（内容与 `/etc/so**/so**.conf` 相同，迁移可回滚）。
 
 ## 3. 单实例（默认）
 
@@ -54,7 +54,7 @@ systemctl restart soco
 
 ## 4. 多实例（每个实例一个机场 / 一个节点）
 
-一条命令新建实例（自动建配置、自动隔离日志与缓存目录、注册并启动 soco@<name>）：
+一条命令新建实例（自动建配置、自动隔离日志与缓存目录、注册并启动 `soco@<name>`）：
 
 ```bash
 soco new jp1 node_id=645 \
@@ -82,13 +82,13 @@ soco rename jp1 jp2
 soco remove jp1                 # 停服务 + 删配置（私有目录保留）
 ```
 
-**端口**：每个实例的监听端口由各自面板下发（UniProxy/config 的 server_port），新建后自查是否冲突：
+**端口**：每个实例的监听端口由各自面板下发（`UniProxy/config` 的 `server_port`），新建后自查是否冲突：
 
 ```bash
 ss -lntp | grep -E 'soco'
 ```
 
-**隔离要点（必须）**：不同实例的 log_file_dir、ip_user_cache_save_dir、access_log_dir 要不同——soco new 已经自动写进 /etc/so**/instances/<name>/。如果手动复制配置，务必一并改这三项，否则同一天会写同一个 so**-vless-YYYY-MM-DD.log，IP-用户缓存也会互相覆盖。
+**隔离要点（必须）**：不同实例的 `log_file_dir`、`ip_user_cache_save_dir`、`access_log_dir` 要不同——`soco new` 已经自动写进 `/etc/so**/instances/<name>/`。如果手动复制配置，务必一并改这三项，否则同一天会写同一个 `so**-vless-YYYY-MM-DD.log`，IP-用户缓存也会互相覆盖。
 
 ## 5. 不用 systemd 的前台/后台方式（screen / nohup）
 
@@ -106,19 +106,19 @@ LD_PRELOAD=/usr/local/soco/libsoco.so /usr/local/soco/soco -c /etc/so**/jp1.conf
 # ctrl+a 松开再按 d 离开；ctrl+a 松开再按 Esc 可滚屏；exit 关闭
 ```
 
-注意 LD_PRELOAD 必须带，否则适配层不生效（88 上限/用户表处理会退回原生行为）。
+注意 `LD_PRELOAD` 必须带，否则适配层不生效（88 上限/用户表处理会退回原生行为）。
 
 ## 6. 流媒体（第三方 NF 解锁）
 
-- 所有实例共读 /etc/so**/routes.toml；nfu so** 生成的流媒体配置直接落在这里，改完重启实例即可：
+- 所有实例共读 `/etc/so**/routes.toml`；`nfu so**` 生成的流媒体配置直接落在这里，改完重启实例即可：
   ```bash
   nfu so**                # 第三方脚本写 /etc/so**/...
   systemctl restart soco  # 或 soco restart <name>
   journalctl -u soco -n 50 -o cat | grep routes
   # 期望：load routes config file </etc/so**/routes.toml> success, routes num: N, enable: true
   ```
-- 如果某个实例要用**另一套** routes，把它的配置里加 routes_url=<地址>（该实例单独生效），其余实例继续用 /etc/so**/routes.toml。
-- routes.toml 写坏会**静默**退回 0 条，改完一定看上面那条日志。
+- 如果某个实例要用**另一套** routes，把它的配置里加 `routes_url=<地址>`（该实例单独生效），其余实例继续用 `/etc/so**/routes.toml`。
+- `routes.toml` 写坏会**静默**退回 0 条，改完一定看上面那条日志。
 
 ## 7. 安装 / 更新 / 回滚
 
@@ -130,13 +130,13 @@ soco update /path/to/soco /path/to/libsoco.so  # 装完后重启全部实例
 ```
 
 安装脚本的行为：
-1. /usr/local/soco/{soco,libsoco.so}（旧文件自动 .bak.<时间戳>）；
-2. 写 soco.service / soco@.service / /usr/bin/soco；
-3. /etc/so**/so**.conf 存在就不动；只有 /etc/soco/soco.conf 时复制过去；
-4. 补齐 /etc/so**/{routes.toml,blockList,whiteList,dns.yml,geoip.dat,geosite.dat}（只补缺）；
-5. 默认重启主实例，--no-restart 可只改单元不重启。
+1. `/usr/local/soco/{soco,libsoco.so}`（旧文件自动 `.bak.<时间戳>`）；
+2. 写 `soco.service` / `soco@.service` / `/usr/bin/soco`；
+3. `/etc/so**/so**.conf` 存在就不动；只有 `/etc/soco/soco.conf` 时复制过去；
+4. 补齐 `/etc/so**/{routes.toml,blockList,whiteList,dns.yml,geoip.dat,geosite.dat}`（只补缺）；
+5. 默认重启主实例，`--no-restart` 可只改单元不重启。
 
-> soco update 只接受**本项目构建的 soco 二进制**（含 53 区域补丁/ARM variantE 与适配层）。直接把官方 so** release 换进来会丢掉破解与适配层，soco -v 能跑但 88 上限/600 s 闸门行为会回退。
+> `soco update` 只接受**本项目构建的 soco 二进制**（含 53 区域补丁/ARM variantE 与适配层）。直接把官方 `so**` release 换进来会丢掉破解与适配层，`soco -v` 能跑但 88 上限/600 s 闸门行为会回退。
 
 回滚（主实例回到旧布局）：
 
@@ -145,15 +145,15 @@ install -m644 /root/soco-pkg/soco.service.bak /etc/systemd/system/soco.service
 systemctl daemon-reload && systemctl restart soco
 ```
 
-## 8. 已实测（2026-11-25，ARM 生产机 ARM_IP）
+## 8. 已实测（2026-11-25，ARM 生产机 `ARM_IP`）
 
 同机同时跑两个实例（mock 面板，分别 3 / 5 用户，独立目录），生产实例（497 用户、真实面板）同时在跑：
 
 | 项 | 结果 |
 |---|---|
-| 实例 A | current user num: 3，监听 *:30001，日志在 /tmp/mi/A/so**-vless-2026-11-25.log |
-| 实例 B | current user num: 5，监听 *:30002，日志在 /tmp/mi/B/... |
-| 生产实例 | current user num: 497，NRestarts=0，*:49999 正常，未受影响 |
+| 实例 A | `current user num: 3`，监听 `*:30001`，日志在 `/tmp/mi/A/so**-vless-2026-11-25.log` |
+| 实例 B | `current user num: 5`，监听 `*:30002`，日志在 `/tmp/mi/B/...` |
+| 生产实例 | `current user num: 497`，`NRestarts=0`，`*:49999` 正常，未受影响 |
 | 面板请求 | A/B 各自只打自己的 mock（19001/19002），无交叉 |
 | 结论 | 多实例安全，**不需要不同机器**；隔离靠「独立 webapi_url + 独立 log/cache 目录」 |
 
@@ -161,23 +161,23 @@ systemctl daemon-reload && systemctl restart soco
 
 | 机器 | 配置路径 | 主实例 | sink | 443 |
 |---|---|---|---|---|
-| ARM ARM_IP（node <ARM_NODE_ID>，VLESS/REALITY） | /etc/so**/so**.conf（unit 无 -c） | 497 用户、49999、REALITY e2e 回 ip=ARM_IP | 0.0.0.0:38443 + nft dnat | **空闲** |
-| AMD AMD_IP（node <AMD_NODE_ID>，SS2022） | /etc/so**/so**.conf（unit 无 -c） | 497 用户、49989、SS2022 探针 PASS=true | 0.0.0.0:38443 + nft dnat | **空闲** |
+| ARM `ARM_IP`（node <ARM_NODE_ID>，VLESS/REALITY） | `/etc/so**/so**.conf`（unit 无 `-c`） | 497 用户、49999、REALITY e2e 回 `ip=ARM_IP` | `0.0.0.0:38443` + nft dnat | **空闲** |
+| AMD `AMD_IP`（node <AMD_NODE_ID>，SS2022） | `/etc/so**/so**.conf`（unit 无 `-c`） | 497 用户、49989、SS2022 探针 `PASS=true` | `0.0.0.0:38443` + nft dnat | **空闲** |
 
-> AMD 迁移时用了 --no-restart 安装 + 一次计划内重启（先停 soco-watchdog 再重启，完成后再拉起）；
-> 同时清掉了 mesh 遗留孤儿实例（/run/soco-mesh/mesh-2.conf，50302）与 ARM 上重复的 nft dnat 规则。
+> AMD 迁移时用了 `--no-restart` 安装 + 一次计划内重启（先停 `soco-watchdog` 再重启，完成后再拉起）；
+> 同时清掉了 mesh 遗留孤儿实例（`/run/soco-mesh/mesh-2.conf`，50302）与 ARM 上重复的 nft dnat 规则。
 
 ## 9. nfu / so\*\* 生态兼容（2026-11-25）
 
-bash <(curl -Ls https://config.nfdns.xyz/nfu_sh/install.sh) 这套工具直接可用，流媒体配置交给它。
+`bash <(curl -Ls https://config.nfdns.xyz/nfu_sh/install.sh)` 这套工具直接可用，流媒体配置交给它。
 
 | 组件 | 作用 |
 |---|---|
-| /usr/bin/so** | 兼容入口：so** restart/stop/start/log/config/status/list 全部转到 soco（nfu 最后一步是 sudo so** restart） |
-| soco-routes-guard.path + .service | 监听 /etc/so**/routes.toml：nfu 用模板覆盖后，自动把「Netflix/OpenAI → 台湾出口」补丁插回（幂等、避开 nfu 半截写入、追加空行触发 soco 热加载） |
-| soco-watchdog.service | ARM：每 30 s 真实 VLESS/REALITY 握手探活，连续 3 次失败重启 soco（详见 arm64/evidence/NFU_COMPAT_20261125.md） |
+| `/usr/bin/so**` | 兼容入口：`so** restart/stop/start/log/config/status/list` 全部转到 soco（nfu 最后一步是 `sudo so** restart`） |
+| `soco-routes-guard.path` + `.service` | 监听 `/etc/so**/routes.toml`：nfu 用模板覆盖后，自动把「Netflix/OpenAI → 台湾出口」补丁插回（幂等、避开 nfu 半截写入、追加空行触发 soco 热加载） |
+| `soco-watchdog.service` | ARM：每 30 s 真实 VLESS/REALITY 握手探活，连续 3 次失败重启 soco（详见 `arm64/evidence/NFU_COMPAT_20261125.md`） |
 
-nfu so** 的实际动作（读 nfu.sh）：
+`nfu so**` 的实际动作（读 nfu.sh）：
 
 ```bash
 wget -O /etc/so**/routes.toml https://config.nfdns.xyz/nfu_sh/config/so**/routes.toml
@@ -185,6 +185,6 @@ sed -i "s/{UUID}/.../g; s/{Out}/.../g; s/{OutPort}/.../g" /etc/so**/routes.toml
 sudo so** restart
 ```
 
-因为 soco 与 so\*\* 共用 /etc/so**，前三步天然兼容；最后一步由 /usr/bin/so** 兜住；覆盖掉的分流补丁由守卫自动补回。
+因为 soco 与 so\*\* 共用 `/etc/so**`，前三步天然兼容；最后一步由 `/usr/bin/so**` 兜住；覆盖掉的分流补丁由守卫自动补回。
 
 > 之前「两个实例互相污染、在线人数从 497 掉到 6」的原因是实验实例和生产实例用了**同一个 webapi 域名**（/etc/hosts 被指到 mock），不是 soco 内部共享状态。多实例只要各自面板地址不同就不会互相覆盖。

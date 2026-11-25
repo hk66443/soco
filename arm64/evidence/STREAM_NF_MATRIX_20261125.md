@@ -2,13 +2,13 @@
 
 ## 1. 现象
 
-ARM 节点（ARM_IP）通过客户端实测：
+ARM 节点（`ARM_IP`）通过客户端实测：
 
 | 站点 | 结果 |
 |---|---|
-| www.cloudflare.com / ipinfo.io | 200（走 rules=["*"] → direct） |
-| www.netflix.com | **000 超时 25 s** |
-| chatgpt.com / api.openai.com | **000，TLS 握手失败** |
+| `www.cloudflare.com` / `ipinfo.io` | 200（走 `rules=["*"]` → direct） |
+| `www.netflix.com` | **000 超时 25 s** |
+| `chatgpt.com` / `api.openai.com` | **000，TLS 握手失败** |
 
 soco 日志证明路由命中正确、出站连接已建立：
 
@@ -22,7 +22,7 @@ end tcp relay:   ...（无数据返回，24 s 后结束）
 
 ## 2. 定位：不是 soco 的问题
 
-在 AMD 上用 /tmp/sing-box **直接连 NF 的 ss 出站（不经 soco）**：
+在 AMD 上用 `/tmp/sing-box` **直接连 NF 的 ss 出站（不经 soco）**：
 
 ```
 node-us:38383 → ifconfig.co 200（出口 104.238.222.105，US）
@@ -50,7 +50,7 @@ node-us:38383 → chatgpt 000（TLS unexpected eof）
 
 ## 4. 修复（已上线）
 
-在 /etc/so**/routes.toml 的 enable=true 之后插入一条最高优先级路由，把 Netflix / OpenAI 相关域名指到台湾出口：
+在 `/etc/so**/routes.toml` 的 `enable=true` 之后插入一条最高优先级路由，把 Netflix / OpenAI 相关域名指到台湾出口：
 
 ```toml
 [[routes]]
@@ -66,7 +66,7 @@ password="<REDACTED-NF-PASSWORD>-200e-4b79-900e-bd125a77c611"
 cipher="chacha20-ietf-poly1305"
 ```
 
-（补丁文件：_ops/routes_tw_patch.toml）
+（补丁文件：`_ops/routes_tw_patch.toml`）
 
 验证：
 
@@ -81,11 +81,11 @@ cloudflare trace  -> 200  (ip=ARM_IP)
 current user num  -> 497
 ```
 
-回滚：cp /etc/so**/routes.toml.bak2.20261125015116 /etc/so**/routes.toml && systemctl restart soco
+回滚：`cp /etc/so**/routes.toml.bak2.20261125015116 /etc/so**/routes.toml && systemctl restart soco`
 
 ## 5. 仍需注意
 
-1. **nfu so** 重新生成 routes.toml 会覆盖这条补丁**，重跑后要重新插入（_ops/routes_tw_patch.toml 可直接拼）。
+1. **`nfu so**` 重新生成 routes.toml 会覆盖这条补丁**，重跑后要重新插入（`_ops/routes_tw_patch.toml` 可直接拼）。
 2. 现在 Netflix 走**台湾区**内容；要美区需要 NF 提供可用的美国流媒体节点（当前 US 节点只有 prime 能通）。
 3. Disney+/HBO 仍走原跨国路由（美国出口），经节点仍 000；如要它们可用，把该路由的 Out 换成 tw（或 sg）即可，代价是内容地区随之变化。
-4. 路由里 rules 顺序即匹配顺序：新补丁必须放在文件最前面（enable=true 后）才生效。
+4. 路由里 `rules` 顺序即匹配顺序：新补丁必须放在文件最前面（`enable=true` 后）才生效。
