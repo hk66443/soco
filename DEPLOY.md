@@ -63,6 +63,26 @@ python3 _ops/build_variantE.py     # 产物：soco-arm64.variantE
 
 > 无论哪条路，装完用 `so-console verify` 对一下指纹；指纹不符说明你拿到的不是验证过的版本。
 
+### 2.1 探测客户端（`probe` 用，建议装）
+
+`probe` / `doctor` 的真实握手需要一个 sing-box 客户端，仓库不含（约 80 MB）。放到固定位置即可：
+
+```bash
+# amd64
+curl -L -o /tmp/sb.tgz https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-amd64.tar.gz 2>/dev/null || \
+  echo "手动下载 sing-box（linux-amd64）后解包"
+# arm64 用 sing-box-linux-arm64.tar.gz
+
+tar xzf /tmp/sb.tgz -C /tmp
+install -m 755 /tmp/sing-box-*/sing-box /usr/local/soco/sing-box-probe
+
+/usr/local/soco/sing-box-probe version      # 能打印版本即可用
+```
+
+> 你的发行版若自带 `sing-box` 包，也可以直接软链：
+> `ln -s "$(command -v sing-box)" /usr/local/soco/sing-box-probe`。
+> 没装这个客户端不影响节点本身运行，只是 `probe` / `doctor` 的握手项会显示 FAIL。
+
 ---
 
 ## 3. 上传什么（只传项目，不要传别的）
@@ -166,7 +186,7 @@ scp -r ./soco root@<SERVER_IP>:/root/so
 **全量**（面板有多少用户就跑多少，串行）：
 
 ```bash
-/root/so/console/so-console probe all          # 等价 probe 497；约 7–20 min 视机型
+/root/so/console/so-console probe all          # 面板有多少用户就跑多少（串行，按机型 10–30 min）
 journalctl -u soco --since '-30min' -o cat | grep -c 'tcp relay'      # 服务端确实在转发
 journalctl -u soco --since '-30min' -o cat | grep -c 'auth failed'    # 期望 0
 ```
@@ -175,7 +195,7 @@ journalctl -u soco --since '-30min' -o cat | grep -c 'auth failed'    # 期望 0
 
 | 关 | 判据 | 失败说明 |
 |---|---|---|
-| ① 进程与适配层 | `so-console verify` 里 `adapter loaded = yes` | `LD_PRELOAD` 没进 unit，或 `.so` 权限/属主不对 → 用户数会卡在 88 |
+| ① 进程与适配层 | `so-console verify` 里 `adapter loaded = yes` | `LD_PRELOAD` 没进 unit，或 `.so` 权限/属主不对 → 用户数会停在 88（适配层未加载的典型症状） |
 | ② 用户表 | `so-console users` 本地 ≈ 面板条数 | 面板 key 错，或自适应层没生效 |
 | ③ 真实握手 + 转发 | `probe 3` 全过且日志有 `tcp relay` | 只有 `access address` 没有 `tcp relay` = 闸门开了 → `so-console gate` |
 
@@ -184,13 +204,13 @@ journalctl -u soco --since '-30min' -o cat | grep -c 'auth failed'    # 期望 0
 ## 7. amd64 专属注意
 
 - **适配层是硬要求**：`soco.service` 里必须有 `Environment=LD_PRELOAD=/usr/local/soco/libsoco.so`，
-  否则只会 `add user` 到 88。`so-console install` 已写好，别手改掉。
+  否则用户表只加载到 88 条。`so-console install` 已写好，别手改掉。
 - 内存 ≥1 GB：单实例 ≈80 MB，但压测（sing-box 客户端）会额外吃 30–60 MB/个，**串行**跑，不要并发。
 - SS2022 业务端口 **TCP+UDP 都要放行**；`probe_many.py` 会把面板下发的 `server_key:cipher` 拼成客户端密码。
 
 ## 8. arm64 专属注意
 
-- 必须是 **variantE**（`sha256` 以 `549ef746…` 开头那一版）。用旧 crack 版或 `variantB` 会在 `>88` 用户时认证过、但不转发。
+- 必须是 **variantE**（`sha256` 以 `549ef746…` 开头那一版）。用旧版或 `variantB` 会出现"认证过但不转发"的数据面问题。
 - **流媒体分流交给其它程序**（nfu / 你自己的路由器 / 面板侧规则）。本控制台**只读查看**，不写 `routes.toml`：
 
 ```bash
@@ -218,7 +238,7 @@ journalctl -u soco --since '-30min' -o cat | grep -c 'auth failed'    # 期望 0
 | 约束 | 原因 |
 |---|---|
 | 每个实例 = `soco@<名>.service` + `<名>.conf`，日志独立 | 共用会互串 |
-| **不要**让两个实例同时打满人数 | 适配层状态会互相顶掉（历史事故：在线从数百掉到个位数） |
+| **不要**让两个实例同时打满人数 | 适配层状态会互相顶掉，人数会异常掉到个位数 |
 | 端口由面板下发，别撞主实例 | 撞了起不来，日志有 `bind: address already in use` |
 | 内存：实例数 ×（80–95 MB）+ 余量 | 1 GB 机器最多 2 个，且不同时压测 |
 
@@ -252,7 +272,7 @@ systemctl daemon-reload
 | 症状 | 先查 | 处置 |
 |---|---|---|
 | `probe` 全挂、端口在听 | `so-console gate` | 按提示补齐 hosts / sink / nft，然后 `install` 一次（幂等） |
-| 用户数卡 88 | `so-console verify` 的 `adapter loaded` | 确认 unit 里 `LD_PRELOAD`、`.so` 为 `0600 root` |
+| 用户数停在 88 | `so-console verify` 的 `adapter loaded` | 确认 unit 里 `LD_PRELOAD`、`.so` 为 `0600 root` |
 | 认证过、客户端无网 | `journalctl -u soco -n 200 -o cat \| grep 'tcp relay'` | 无 relay = 闸门/上限；有 relay = 出口/面板侧问题 |
 | `panel users: <fetch failed>` | 配置里的 `webapi_url / webapi_key` | 手测面板接口；sink 只拦授权域名，不影响面板 |
 | `routes num: 0` | `so-console routes validate` | TOML 写坏或被别的工具覆盖 → 用 `.bak` 恢复 |

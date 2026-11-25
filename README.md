@@ -1,152 +1,188 @@
-# soco 节点工程 · amd64 + arm64（含控制台）
+# soco 节点工程 · amd64 / arm64（含控制台）
 
-一套可直接部署到**任意新机器**的节点工程包：`so** v2.18.1` 兼容节点程序的深度改造 +
-一个单文件控制台（`console/so-console`）。解决的问题只有两个：
+在一台**普通 Debian 机器**上把节点部署起来并做日常运维的工程包：
 
-| 问题 | 现象 | 本工程的做法 |
+```
+节点程序（二进制补丁 + 适配层 libsoco.so）
+  + systemd 单元（主服务 / 多实例模板 / watchdog / 授权 sink / nft 转发）
+  + 单文件控制台  console/so-console
+  + 部署与运维脚本、补丁清单、证据
+```
+
+两个架构**分开两条路径**，互不依赖，别交叉照搬：
+
+| | amd64（x86_64） | arm64（aarch64） |
 |---|---|---|
-| **88 用户上限** | 面板下发 >88 个用户时，只 `add user` 到 88 | 二进制补丁（amd64 53 区域 / arm64 10 处控制闭包）+ 适配层 `libsoco.so` |
-| **600 秒授权闸门** | 跑满 600 s 后认证照过、但**不转发**（新连接全挂） | 让授权检查"快速失败"（hosts + 本地 sink + nft 分流转发），不动业务逻辑 |
+| 典型协议 | Shadowsocks 2022 | VLESS + REALITY |
+| 二进制 | 53 区域补丁版 | variantE（变体链生成） |
+| 适配层 | `LD_PRELOAD=libsoco.so`（必需） | 同名 aarch64 版 |
+| 分流 `routes.toml` | 通常不用 | 常用（内置读取） |
+| 内存 | ≥1 GB | ≥2 GB |
 
-两台真实机器的实测结果（细节在 `docs/` 与各架构 `evidence/`）：**497 个用户逐个独立握手 + 真实转发，497/497 全过**，
-服务端 `497 authenticated / 497 relayed / 0 auth failed`，`NRestarts=0`。
-
-> 说明：教程里程序名统一写成 `so**`（不出现完整产品名）。凡是路径、变量、命令里出现 `so**`，
-> 都指代同一个名字；真实路径不用记，用 `so-console paths` 打出来即可。所有 IP / node id 也都是占位符，
-> 换成你自己的；占位符清单见 [SECURITY.md](SECURITY.md)。
->
-> 代码块里的 `so**` 属于**屏蔽占位**，直接照抄会跑不通 —— 要么换成你机器上的真实名字，
-> 要么用控制台（`so-console install / paths / routes ...`），它内部已经知道真实路径。
+> 部署文档：[DEPLOY.md](DEPLOY.md)　控制台命令手册：[CONSOLE.md](CONSOLE.md)　占位符说明：[SECURITY.md](SECURITY.md)
 
 ---
 
-## 1. 三分钟上手（新机器）
+## 0. 前置条件
+
+| 项 | 要求 |
+|---|---|
+| 系统 | Debian 11/12/13（Ubuntu 22.04+ 亦可），systemd，root |
+| 架构 | `x86_64` 或 `aarch64`（`uname -m` 确认） |
+| 内存 | amd64 ≥1 GB；arm64 ≥2 GB |
+| 端口 | 业务端口由面板下发；SS2022 要放行 **TCP+UDP** |
+| 面板 | 已在该机器建好节点，拿到**节点 ID** |
+| 二进制 | `soco` + `libsoco.so`（仓库不含，见 [DEPLOY.md](DEPLOY.md) §2） |
+| 探测客户端 | `sing-box`（放 `/usr/local/soco/sing-box-probe`，用于 `probe`/`doctor`，见 [DEPLOY.md](DEPLOY.md) §2.1） |
+| 网络 | 机器能出网（拉面板接口 + 半夜探活） |
+
+---
+
+## 1. 三条命令上线（amd64 / arm64 通用）
 
 ```bash
-# ① 把整个项目上传到服务器（只传项目，不要传任何本地备份/私钥）
+# ① 上传项目（只传项目本身）
 scp -r ./soco root@<你的服务器>:/root/so
 
-# ② 安装：向导只问三项（节点 ID / 协议 / 面板地址），其余全固定
+# ② 安装：向导只问三项 —— 节点 ID / 协议 / 面板地址
 /root/so/console/so-console install
 
-# ③ 验证（3 个用户真实握手 → 全量自检）
+# ③ 验证：3 个用户真实握手 + 全量自检
 /root/so/console/so-console probe 3
 /root/so/console/so-console doctor
 ```
 
-**谁填什么**：客户只填 **节点 ID、协议（`ss`/`vless`）、面板地址**；节点密钥由控制台**随机生成**（结果里打印，同一串填进面板）；
-`type/api/间隔/端口/日志` 全部固定 —— 日志固定 `log_level=error`，**只记错误**。
-一行搞定也行：`so-console install --node-id 12 --type ss --url https://panel.example.com`。
+一行式（脚本/批量）：
 
-不带参数运行 `so-console` 就是**交互控制台**（分组菜单，也可以直接敲命令）：
-
+```bash
+so-console install --node-id 12 --type ss    --url https://panel.example.com
+so-console install --node-id 13 --type vless --url https://p2.example.com
+so-console install --node-id 12 --type ss    --url https://panel.example.com --webapi-key <面板给的key>
+so-console install --node-id 12 --type ss    --url https://panel.example.com --dry-run
+so-console install --node-id 12 --type ss    --url https://panel.example.com --no-probe
+so-console install --node-id 12 --type ss    --url https://panel.example.com --name jp1
 ```
-╭─────────────────────────────────────────────────────────────
-│ so-console 2.0   amd64          2026-01-01 12:00:00
-╰─────────────────────────────────────────────────────────────
-  ── 部署 ─────────────────────────────
-   1 install   部署 / 修复本机节点（向导：只填 ID、协议、面板）
-   2 inst      多机场：部署 / 查看 / 启停 / 删除实例
-  ── 运维 ─────────────────────────────
-   3 status    状态总览（服务 / 端口 / 人数 / 闸门 / 分流）
-   4 service   启动 / 停止 / 重启
-   5 logs      日志（默认主服务，只记错误）
-   6 users     本地 vs 面板用户数
-  ── 验证 ─────────────────────────────
-   7 probe     真实握手（3 / N / all）
-   8 gate      600 秒闸门自检
-   9 doctor    全量自检
-  10 verify    指纹 / 适配层 / 单元
-  ── 数据 ─────────────────────────────
-  11 routes    流媒体分流（只读查看）
-  12 backup    备份（二进制 + 配置）
-  13 rollback  从备份回滚
-  14 paths     真实路径
-    0 quit     退出
-so> 
-```
-
-脚本化同样适用：`so-console status`、`so-console probe all`、`so-console inst new jp1 --node-id 21 --type vless --url https://p2`。
-**分流不由本控制台改写**：流媒体交给其它程序，`routes` 只做只读查看与 TOML 校验。
 
 ---
 
-## 2. 两个架构的差别（装之前先确认自己是哪种）
+## 2. amd64 怎么部署
 
-| | **amd64**（x86_64） | **arm64**（aarch64） |
-|---|---|---|
-| 典型协议 | Shadowsocks 2022（`2022-blake3-aes-256-gcm`） | VLESS + REALITY（`xtls-rprx-vision`） |
-| 二进制 | 53 区域补丁版 | **variantE**（variantC + 8 处 `mov #3→xzr`） |
-| 适配层 | 必需：`LD_PRELOAD=libsoco.so` 抓全量用户表 | 同样加载 `libsoco.so`（aarch64 版） |
-| 88 上限解法 | 补丁 + 适配层 | 10 处控制闭包补丁 |
-| 600 s 闸门 | 环境旁路（hosts + sink + nft） | 环境旁路 **+** 补回 8 处补丁 |
-| 分流 `routes.toml` | 通常不用 | 常用（NF/ChatGPT 走指定地区出口） |
-| 内存要求 | ≥1 GB（单实例 ≈80 MB，压测时别叠实例） | ≥2 GB（单实例 ≈95 MB） |
-| 实测规模 | 497 用户 / 串行全量约 20 min | 497 用户 / 串行全量约 7 min |
+```bash
+uname -m                      # 期望 x86_64
 
-> 两边的补丁**不可互换**：补丁偏移、函数入口、闭包数量都不同。按架构走对应文档，别交叉照搬。
+# ① 放二进制（两种来源任选，见 DEPLOY.md §2）
+install -d -m 755 /usr/local/soco
+install -m 755 /root/so/bin/soco        /usr/local/soco/soco
+install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
+
+# ② 安装（向导：节点 ID / 协议选 1=Shadowsocks 2022 / 面板地址）
+/root/so/console/so-console install
+
+# ③ 验证
+/root/so/console/so-console status      # 服务 active、端口 LISTEN
+/root/so/console/so-console verify      # 适配层已加载（否则用户数会卡住）
+/root/so/console/so-console probe 3     # 3/3
+```
+
+amd64 要点：`soco.service` 必须带 `Environment=LD_PRELOAD=/usr/local/soco/libsoco.so`（控制台会写好）；
+业务端口 TCP+UDP 都要放行；压测时**串行**跑，同时最多 1 个探测客户端。
 
 ---
 
-## 3. 目录
+## 3. arm64 怎么部署
+
+```bash
+uname -m                      # 期望 aarch64
+
+# ① 放二进制（variantE；或用 _ops/build_variant*.py 生成）
+install -d -m 755 /usr/local/soco
+install -m 755 /root/so/bin/soco        /usr/local/soco/soco
+install -m 600 /root/so/bin/libsoco.so  /usr/local/soco/libsoco.so
+
+# ② 安装（向导：节点 ID / 协议选 2=VLESS + REALITY / 面板地址）
+/root/so/console/so-console install
+
+# ③ 验证
+/root/so/console/so-console verify
+/root/so/console/so-console probe 3
+/root/so/console/so-console routes      # 分流只读查看（规则数 / 首个出站 / 加载状态）
+```
+
+arm64 要点：必须用 variantE 那一版二进制；REALITY 的 `public_key / short_id / server_name` 由面板下发，节点侧不写；
+流媒体分流由其它程序负责，控制台**只读**。
+
+---
+
+## 4. 一台机器多个机场（多实例）
+
+```bash
+/root/so/console/so-console inst                                    # 列表：实例 / 节点ID / 协议 / 状态 / 重启
+/root/so/console/so-console inst new                                # 向导（实例名 → 节点ID → 协议 → 面板）
+/root/so/console/so-console inst new jp1 --node-id 21 --type vless --url https://p2.example.com
+/root/so/console/so-console inst start   jp1
+/root/so/console/so-console inst stop    jp1
+/root/so/console/so-console inst restart jp1
+/root/so/console/so-console inst log     jp1
+/root/so/console/so-console inst remove  jp1
+```
+
+每个实例 = 独立 `soco@<名>.service` + `<名>.conf`（`0600`）+ 独立日志，端口由各自面板下发。
+
+| 约束 | 说明 |
+|---|---|
+| 实例数 ×（80–95 MB）+ 余量 | 1 GB 机器最多 2 个 |
+| 不要两个实例同时压满人数 | 适配层状态会互相顶掉 |
+| 端口别撞主实例 | 撞了起不来，日志 `bind: address already in use` |
+
+---
+
+## 5. 全部命令总表
+
+| 命令 | 作用 |
+|---|---|
+| `install [--node-id N] [--type ss\|vless] [--url U] [--webapi-key K] [--name N] [--dry-run] [--no-probe]` | 部署 / 修复（幂等） |
+| `inst list` / `inst new [名] [--node-id N --type T --url U]` / `inst start\|stop\|restart\|log\|remove <名>` | 多机场 |
+| `status` | 一屏总览：服务/端口/人数/闸门计数/分流/实例/指纹 |
+| `service start\|stop\|restart\|status` | 主服务控制（连带 sink 与 nft 转发） |
+| `logs [unit] [行数]` | 日志（默认主服务最后 100 行） |
+| `users` | 本地 vs 面板用户数对照 |
+| `probe 3` / `probe all` / `probe N 1,50,89` | 真实握手（串行） |
+| `gate` | 600 秒闸门自检（hosts / sink / nft / key 错误） |
+| `doctor` | 全量自检（逐项 PASS/FAIL + 修复提示） |
+| `verify` | 二进制指纹、unit 关键行、适配层是否加载 |
+| `routes` / `routes show` / `routes validate` | 流媒体分流**只读**查看与 TOML 校验 |
+| `backup` / `rollback [file]` | 备份（二进制+配置）/ 从备份恢复 |
+| `paths` | 真实路径（配置 / 二进制 / 实例 / 端口 / 架构） |
+| `help` | 用法 |
+
+不带参数运行 = 交互控制台（分组菜单，也可在 `so>` 下直接敲上面任意命令）。
+
+---
+
+## 6. 目录
 
 ```
 soco/
-├── README.md                 ← 本文件（总览 + 三分钟上手 + 架构差别）
-├── DEPLOY.md                 ← 新机器部署全流程（amd64 / arm64 都适用）
-├── CONSOLE.md                ← 控制台命令参考
-├── SECURITY.md               ← 仓库里哪些值被屏蔽了、你自己的值要填在哪
-├── HANDOFF.md                ← 接手包（环境、服务清单、踩过的坑、待办）
-├── BYPASS.md                 ← 绕过过程全记录（实验数据与排除结论）
-├── console/
-│   └── so-console            ← 单文件控制台（Python3，无第三方依赖）
-├── amd64/
-│   ├── src/                  ← 适配器 C 源码、licence sink、mesh、探测与实验室脚本
-│   ├── deploy/               ← 部署/切换/回滚脚本 + 运维手册
-│   ├── manifest/             ← 53 处补丁清单、静态校验、构建溯源
-│   └── evidence/             ← 二分实验、映射报告、运行时证据、全量跑批日志
-├── arm64/
-│   ├── analysis/             ← 43 字节 crack 逐处分析
-│   ├── deploy/               ← 一键部署、分流切换、mock 面板、运维脚本
-│   ├── manifest/             ← SHA256SUMS、溯源
-│   └── evidence/             ← 88 上限解除全过程、全量、分流修复、多实例
-├── packaging/                ← 通用交付：install-soco.sh、soco-multi.sh、watchdog、routes-guard
-└── _ops/                     ← 实战脚本：probe_many.py、build_variant*.py、隧道、跑批
+├── README.md          ← 本文件（前置条件 + 两条部署路径 + 命令总表）
+├── DEPLOY.md          ← 新机器部署全流程（逐步骤、二进制来源、回滚、故障表）
+├── CONSOLE.md         ← 控制台命令参考（含输出样例）
+├── SECURITY.md        ← 占位符清单：哪些值要换成你自己的
+├── console/so-console ← 单文件控制台（python3，无第三方依赖）
+├── amd64/             ← src（适配层源码/sink/探针）、deploy、manifest、evidence
+├── arm64/             ← src、deploy、analysis、manifest、evidence
+├── packaging/         ← 通用交付：install-soco.sh、soco-multi.sh、watchdog、routes-guard
+└── _ops/              ← 实战脚本：probe_many.py、build_variant*.py、隧道、跑批
 ```
 
-**二进制不在仓库里**（每个 80–90 MB）：要么用 `_ops/build_variant*.py` 从原版重建，
-要么从旧机器的 `/usr/local/soco/` 备份取回。见 [DEPLOY.md](DEPLOY.md) §2。
+**二进制不入库**（每个 80–90 MB）：用 `_ops/build_variant*.py` / `amd64/manifest` 从原版重建，
+或从已有部署的 `/usr/local/soco/` 备份取回 → [DEPLOY.md](DEPLOY.md) §2。
 
 ---
 
-## 4. 判健康只有一条标准
+## 7. 注意
 
-**跑一次真实协议握手，并且确认服务端真的 dial + relay 了。**
-
-```bash
-/root/so/console/so-console probe 3        # 期望 3/3
-/root/so/console/so-console doctor         # 期望 ALL PASS
-```
-
-`ss -lnt`、`nc -z`、`ping 端口` 全部**不可信**：闸门打开时端口照样 LISTEN，accept 后立即 close、不读字节，
-已建立的旧连接也仍然活着。这就是为什么本工程所有验证都走真实握手（[`_ops/probe_many.py`](_ops/probe_many.py)）。
-
----
-
-## 5. 文档索引
-
-| 想干什么 | 看哪份 |
-|---|---|
-| 新机器从零装一套（amd64 或 arm64） | [DEPLOY.md](DEPLOY.md) |
-| 记不住命令 / 想用控制台操作 | [CONSOLE.md](CONSOLE.md) |
-| 上线后回滚、卸载、换机 | [DEPLOY.md](DEPLOY.md) §9 / §10 |
-| 为什么这么改、怎么排错到字节级 | [BYPASS.md](BYPASS.md)、`*/evidence/` |
-| 交接给下一个人 / 下一个 AI | [HANDOFF.md](HANDOFF.md) |
-| 仓库里的占位符怎么填自己的值 | [SECURITY.md](SECURITY.md) |
-
-## 6. 使用边界
-
-1. `600 s` 闸门**没有**从二进制里彻底移除，靠 hosts + 本地 sink 维持；`so-console doctor` 会逐项检查，缺一项就退回"600 s 后新连接全断"。
-2. 一台机**不要**同时跑两个实例压满人数：适配层状态会互相顶掉。要多机场就多开机器，或独立目录 + 独立端口 + 不同时打满。
-3. `routes.toml` 是**模板**（含 `{Out}/{OutPort}` 等占位符），写坏会**静默**退回 0 条——`so-console routes validate` 后再 `list` 看 `loaded` 那一行。
-4. 本工程针对闭源商业程序做了逆向与补丁，仅供你在**自己已授权**的环境使用。
+1. **判健康只认真实握手**：`ss -lnt`、`nc -z` 都不可信（闸门态下端口照样 LISTEN，但不转发）。
+2. 日志固定 `log_level=error`（只记错误）；要看会话细节临时调高，改完重启。
+3. 分流由其它程序负责，`routes` 只读；`routes.toml` 写坏会**静默**退回 0 条。
+4. 授权 sink 占 `38443`，`127.0.0.1:443` 用 nft dnat 指过去，**对外 443 是空的**，可给网站用。
+5. 变更前先 `so-console verify && so-console backup`，变更后跑 `probe 3` + `doctor`。

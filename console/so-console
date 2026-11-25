@@ -241,7 +241,37 @@ def probe_script(c):
     return None
 
 
+def probe_client(c):
+    """sing-box 客户端（真实握手探测用），仓库不含这个二进制。"""
+    for p in (Path(c['bin_dir']) / 'sing-box-probe', Path(c['bin_dir']) / 'sing-box',
+              Path(c['pkg']) / 'bin' / 'sing-box-probe', Path('/tmp/sing-box')):
+        if p.is_file() and os.access(str(p), os.X_OK):
+            return p
+    return None
+
+
+def panel_users(c):
+    """面板 /UniProxy/user 条数（None = 取不到）。"""
+    conf = Path(c['conf'])
+    if not conf.is_file():
+        return None
+    url, nid, key = key_of(conf, 'webapi_url'), key_of(conf, 'node_id'), key_of(conf, 'webapi_key')
+    if not (url and nid and key):
+        return None
+    st = key_of(conf, 'server_type', 'vless')
+    nt = {'ss': 'shadowsocks', 'vless': 'vless', 'vmess': 'vmess'}.get(st, st)
+    rc, s = sh(['curl', '-sS', '--max-time', '20', '%s/api/v1/server/UniProxy/user'
+                '?node_id=%s&node_type=%s&token=%s' % (url, nid, nt, key)])
+    try:
+        return len(json.loads(s)['users'])
+    except Exception:
+        return None
+
+
 def det_port(c):
+    p = port_of_service(c['service'])            # 以主进程实际监听为准
+    if p:
+        return p
     if c['port']:
         return c['port']
     conf = Path(c['conf'])
@@ -334,6 +364,7 @@ After=soco-licence-sink.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+ExecStart=/bin/sh -c "nft list table ip nat >/dev/null 2>&1 || nft add table ip nat"
 ExecStart=/bin/sh -c "nft list chain ip nat redir >/dev/null 2>&1 || nft add chain ip nat redir '{{ type nat hook output priority dstnat; policy accept; }}'"
 ExecStart=/bin/sh -c "nft list chain ip nat redir | grep -q 38443 || nft add rule ip nat redir ip daddr 127.0.0.1 tcp dport 443 dnat to 127.0.0.1:38443"
 
@@ -399,6 +430,16 @@ def preflight(ctx=None, need_bin=True):
     return probs
 
 
+def preflight_warn(ctx):
+    """不阻断安装、但必须告知的缺项。"""
+    warns = []
+    if probe_client(ctx) is None:
+        warns.append('缺探测客户端 sing-box-probe（probe / doctor 会用到，见 DEPLOY.md §2.1）')
+    if probe_script(ctx) is None:
+        warns.append('缺 probe_many.py（install 会从 %s/_ops 拷，拷不到就手放）' % ctx['pkg'])
+    return warns
+
+
 def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
            probe_after=True, in_wizard=False):
     """幂等部署 / 修复。name='main' 部署主实例，其余部署 soco@<name> 实例。"""
@@ -415,16 +456,18 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
     kv('面板', url)
     kv('配置', str(conf_path))
     kv('单元', svc + '.service')
-    kv('密钥', key[:8] + '…' + key[-4:] + '  (自动生成，需填到面板同一串)')
+    kv('密钥', key[:8] + '…' + key[-4:] + '  (需填到面板同一串)')
 
     i = 0
     i += 1
     step(i, n_steps, '环境预检', 'run')
-    probs = preflight(ctx, need_bin=True)
+    probs = preflight(ctx, need_bin=not dry)
     if probs:
         step(i, n_steps, '环境预检', 'fail', '; '.join(probs))
         return 2
     step(i, n_steps, '环境预检', 'ok')
+    for w in preflight_warn(ctx):
+        warn(w)
 
     i += 1
     step(i, n_steps, '目录与二进制', 'run')
@@ -448,9 +491,9 @@ def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
     if dry:
         step(i, n_steps, '写入配置（固定参数）', 'skip', 'dry-run')
     else:
-        if not main_inst and conf_path.exists():
-            warn('%s 已存在，将覆盖（原文件备份 .bak）' % conf_path)
-            shutil.copy2(conf_path, str(conf_path) + '.bak')
+        if conf_path.exists():
+            warn('%s 已存在，覆盖前先备份 .bak' % conf_path)
+            shutil.copy2(conf_path, str(conf_path) + '.bak.%s' % time.strftime('%Y%m%d%H%M%S'))
         write_conf(conf_path, node_id, stype, url, key, name)
         step(i, n_steps, '写入配置（固定参数）', 'ok', 'log_level=error')
 
@@ -561,11 +604,22 @@ def wizard_target(ctx):
 # ══════════════════════════════════════════════════════════════ commands
 def cmd_install(c, a):
     if getattr(a, 'node_id', None) and getattr(a, 'url', None):
-        node_id, stype, url = a.node_id, a.stype or 'ss', a.url.rstrip('/')
+        node_id, url = a.node_id, a.url.rstrip('/')
+        stype = getattr(a, 'stype', None) or ('vless' if arch() == 'arm64' else 'ss')
     else:
         node_id, stype, url = wizard_target(c)
-    key = getattr(a, 'webapi_key', None) or secrets.token_hex(16)
     name = getattr(a, 'name', None) or 'main'
+    conf_path = Path(c['conf']) if name == 'main' else Path(c['inst_dir']) / ('%s.conf' % name)
+    # 密钥：显式给了就用给的；否则沿用已有配置里的（重跑不能换 key，否则面板对不上 = 断服）
+    key = getattr(a, 'webapi_key', None) or ''
+    reused = False
+    if not key and conf_path.is_file():
+        key = key_of(conf_path, 'webapi_key') or key_of(conf_path, 'soga_key')
+        reused = bool(key)
+    if not key:
+        key = secrets.token_hex(16)
+    if reused:
+        ok('检测到已有配置，沿用原节点密钥（重跑不会换 key）')
     return deploy(c, node_id, stype, url, key, name=name, dry=getattr(a, 'dry_run', False),
                   probe_after=not getattr(a, 'no_probe', False))
 
@@ -612,28 +666,17 @@ def cmd_service(c, a):
 
 def cmd_users(c, _a):
     head('用户数对照')
-    kv('本地（日志）', last_user_num(c['service']))
-    conf = Path(c['conf'])
-    if not conf.is_file():
-        warn('没有配置 %s' % conf)
+    local = last_user_num(c['service'])
+    kv('本地（日志）', local)
+    n = panel_users(c)
+    if n is None:
+        bad('面板接口失败（查 webapi_url / webapi_key / 网络）')
         return 1
-    url = key_of(conf, 'webapi_url')
-    nid = key_of(conf, 'node_id')
-    key = key_of(conf, 'webapi_key')
-    st = key_of(conf, 'server_type', 'vless')
-    nt = {'ss': 'shadowsocks', 'vless': 'vless', 'vmess': 'vmess'}.get(st, st)
-    if not (url and nid and key):
-        warn('配置缺 webapi_url / node_id / webapi_key')
-        return 1
-    rc, s = sh(['curl', '-sS', '--max-time', '20', '%s/api/v1/server/UniProxy/user'
-                '?node_id=%s&node_type=%s&token=%s' % (url, nid, nt, key)])
-    try:
-        kv('面板（UniProxy）', '%d 个用户' % len(json.loads(s)['users']))
-        ok('对照一致' if last_user_num(c['service']) == str(len(json.loads(s)['users']))
-           else '本地与面板不一致 → so-console logs soco 80')
-    except Exception:
-        bad('面板接口失败：%s' % s[:100].replace(key, '***'))
-        return 1
+    kv('面板（UniProxy）', '%d 个用户' % n)
+    if local == str(n):
+        ok('对照一致')
+    else:
+        warn('本地与面板不一致 → so-console logs %s 80' % c['service'])
     return 0
 
 
@@ -641,6 +684,10 @@ def cmd_probe(c, a):
     script = probe_script(c)
     if script is None:
         bad('找不到 probe_many.py（先 so-console install，或放进 %s）' % c['bin_dir'])
+        return 2
+    if probe_client(c) is None:
+        bad('找不到探测客户端（sing-box-probe），放在 %s/sing-box-probe 后重试（DEPLOY.md §2.1）'
+            % c['bin_dir'])
         return 2
     n = getattr(a, 'count', None) or '3'
     cmd = ['python3', '-u', str(script), 'all' if n in ('all', 'full') else str(n)]
@@ -860,7 +907,8 @@ def cmd_doctor(c, _a):
         ('10 分钟无认证失败', journal(c['service']).count('auth failed') == 0, '查面板 key'),
         ('适配层已加载', 'libsoco' in out(['cat', '/proc/%s/maps' % (main_pid(c['service']) or '0')]),
          'so-console install'),
-        ('面板可达', 'access address' in journal(c['service'], '-10min'), '查网络/面板'),
+        ('握手客户端 sing-box-probe', probe_client(c) is not None, 'DEPLOY.md §2.1'),
+        ('面板接口可达', panel_users(c) is not None, '查 webapi_url / webapi_key / 网络'),
     ]
     fails = 0
     for name, good, hint in rows:
