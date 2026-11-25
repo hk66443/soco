@@ -15,13 +15,13 @@ ln -s /root/so/console/so-console /usr/local/bin/so-console   # 建议做软链
 
 | 谁填 | 填什么 |
 |---|---|
-| **客户** | 节点 ID、协议（`ss` / `vless`）、面板地址、**节点密钥**（面板节点详情里的 `webapi_key`，与 `so**_key` 同一串） |
-| **控制台自动** | 目录、证书、hosts、nft 规则、systemd 单元、端口探测、真实握手验证 |
+| **客户** | 节点 ID、协议、面板地址（`webapi_url`）、**面板通信密钥 `webapi_key`**（必须与面板一致，不能随机） |
+| **客户（TLS 协议时）** | 证书方式：`panel` / `self` / `file` / `http` / `dns`，见 [CONFIG.md](CONFIG.md) §3 |
+| **控制台自动** | `so**_key`（授权密钥，随机即可；本工程不校验）、目录、证书落盘、hosts、nft 规则、systemd 单元、端口探测、握手验证 |
 | **固定不可改** | `type=xboard` / `api=webapi` / `check_interval=60` / `submit_interval=60` / **`log_level=error`（只记错误日志）** |
 
-> 节点密钥在向导里**粘面板那串**最稳（面板与节点必须一致）；回车留空 = 本机随机生成 32 位 hex，
-> 装完把打印出来的值填回面板（只有面板允许自定义密钥时才这么干）。
-> `--webapi-key <串>` 等价于在向导里填。
+> 配置文件是 `/etc/so**/so**.conf`（机场/主控信息都在这），真实路径用 `so-console paths` 看；
+> 多机场是 `/etc/so**/<实例名>.conf`。字段逐条说明见 [CONFIG.md](CONFIG.md) §2。
 
 ---
 
@@ -36,15 +36,31 @@ so-console install
 ```
 ╭─ 安装向导  面板上的四项
   节点 ID [ ]: 12
-  协议  1) Shadowsocks 2022   2) VLESS + REALITY
-  选择 [1]: 1
+  协议：
+   1 · Shadowsocks 2022（无证书）
+   2 · VLESS（REALITY 由面板下发 / 或自备证书）
+   3 · VMess（TLS，需要证书）
+   4 · Trojan（TLS，需要证书）
+   5 · AnyTLS（TLS，需要证书）
+   6 · Hysteria（TLS/QUIC，需要证书）
+  选择 [1]: 4
   面板地址 [https://]: https://panel.example.com
-  节点密钥 = 面板节点详情里的 webapi_key（与 so**_key 同一串）
-  节点密钥（回车 = 本机随机生成） [ ]: 3f9c1a7d2b4e60815c7a9e2d4b6f8031
+  webapi_key = <REDACTED>
+  面板密钥 webapi_key: 3f9c1a7d2b4e60815c7a9e2d4b6f8031
+
+╭─ 证书（trojan 需要 TLS）
+   1 · 由面板下发证书（xboard 节点里配的 cert_config / 上传内容）
+   2 · 本机自签（控制台自己生成 cert/key，最快能用）
+   3 · 已有证书文件（给你 cert 与 key 的路径）
+   4 · ACME HTTP-01（需要域名 + 80 端口，so** 自己申请）
+   5 · ACME DNS-01（需要域名 + dns_provider）
+  证书方式 [2]: 2
+  证书域名（SNI）: node.example.com
 
   固定：type              · xboard / api=webapi
   固定：间隔              · pull/push 60s
   固定：日志              · log_level=error（只记错误）
+  固定：so**_key          · 随机生成（本工程不校验授权）
   固定：闸门              · hosts + 本地 sink(38443) + nft dnat
 
 ── 部署 main

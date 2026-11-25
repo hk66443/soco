@@ -19,7 +19,9 @@
 | 分流 `routes.toml` | 通常不用 | 常用（控制台只读查看） |
 | 内存 | ≥1 GB | ≥2 GB |
 
-> 细节：[DEPLOY.md](DEPLOY.md)（完整流程 / 回滚 / 故障表）　[CONSOLE.md](CONSOLE.md)（命令行手册）　[SECURITY.md](SECURITY.md)（占位符）
+> 细节：[DEPLOY.md](DEPLOY.md)（完整流程 / 回滚 / 故障表）　[CONFIG.md](CONFIG.md)（**配置文件在哪 / 字段谁写 / 证书怎么弄**）　[CONSOLE.md](CONSOLE.md)（命令行手册）　[SECURITY.md](SECURITY.md)（占位符）
+
+**机场/主控信息写在 `/etc/so**/so**.conf`**（真实路径用 `so-console paths` 看）：`node_id`、`webapi_url`、`webapi_key`、`so**_key`、协议、间隔、日志、证书都在这个文件里；多机场是 `/etc/so**/<实例名>.conf`。详见 [CONFIG.md](CONFIG.md)。
 
 ---
 
@@ -69,9 +71,9 @@ curl -fsSL https://raw.githubusercontent.com/hk66443/soco/main/install.sh | bash
 
 ### 1.2 交互控制台
 
-进去以后就是菜单：选 `1 install`，向导问四项（**节点 ID / 协议 / 面板地址 / 节点密钥**），
-其余全部固定自动完成。节点密钥就是面板节点详情里那串 `webapi_key`（与 `so**_key` 同一串），
-粘进去最稳；如果面板允许自定义、或暂时不接面板，回车就让本机随机生成一串，装完照着打印的值填回面板。
+进去以后就是菜单：选 `1 install`，向导问四项（**节点 ID / 协议 / 面板地址 / 面板通信密钥 `webapi_key`**），
+TLS 协议再多问一项证书方式；其余（`type`、`api`、间隔、日志、`so**_key`、闸门、单元）全部固定或自动。
+`webapi_key` 必须粘面板里那串（**不能随机**，随机了节点拉不到用户）；`so**_key` 由控制台随机生成（本工程不校验授权）。
 菜单里也能直接敲任意命令，例如 `so> probe 3`、`so> inst new jp1 …`。
 
 ```
@@ -116,23 +118,24 @@ curl -fsSL https://raw.githubusercontent.com/hk66443/soco/main/install.sh | bash
 ### 1.3 一行式（脚本 / 批量，不进菜单）
 
 ```bash
-# 面板已经给了一对 key（推荐：与面板完全一致）
-so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <面板给的key>
+# 最常用：四项都在参数里（webapi_key 必须是面板那串）
+so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <面板的 webapi_key>
 
 # 第二个机场（另一台面板）
-so-console install --node-id 13 --type vless --url https://p2.example.com --webapi-key <p2 的key>
+so-console install --node-id 13 --type vless --url https://p2.example.com --webapi-key <p2 的 webapi_key>
 
-# 不给 --webapi-key：本机随机生成一串，装完打印出来，记得填回面板
-so-console install --node-id 12 --type ss --url https://panel.example.com
+# TLS 协议要证书：panel / self / file / http / dns 五选一（见 CONFIG.md §3）
+so-console install --node-id 14 --type trojan --url https://panel.example.com --webapi-key <key> \
+  --cert-mode self --cert-domain node.example.com
 
 # 只预演，不改系统（打印 7 步计划）
-so-console install --node-id 12 --type ss --url https://panel.example.com --dry-run
+so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <key> --dry-run
 
 # 先装起来，跳过真实握手验证（网络/面板还没通的时候）
-so-console install --node-id 12 --type ss --url https://panel.example.com --no-probe
+so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <key> --no-probe
 
 # 直接用实例名部署（等价于 inst new jp1 …）
-so-console install --node-id 12 --type ss --url https://panel.example.com --name jp1
+so-console install --node-id 12 --type ss --url https://panel.example.com --webapi-key <key> --name jp1
 ```
 
 `so-console` = `/root/so/console/so-console`，可做软链：
@@ -146,9 +149,11 @@ ln -sf /root/so/console/so-console /usr/local/bin/so-console
 | 项 | 值 | 谁负责 |
 |---|---|---|
 | 节点 ID | 面板里那个节点 id | **客户填** |
-| 协议 | `ss`（Shadowsocks 2022）/ `vless`（VLESS + REALITY） | **客户选** |
-| 面板地址 | `https://panel.example.com` | **客户填** |
-| 节点密钥 | 面板节点详情里的 `webapi_key`（与 `so**_key` 同一串） | **客户填**（向导里粘进去；回车 = 本机随机生成，面板允许自定义才行） |
+| 协议 | `ss` / `vless` / `vmess` / `trojan` / `anytls` / `hysteria` | **客户选** |
+| 面板地址 | `https://panel.example.com`（写进 `webapi_url`） | **客户填** |
+| **面板通信密钥** | 面板节点详情里的 `webapi_key` | **客户填**：必须与面板一致，**不能随机**（不一致就拉不到用户） |
+| 授权密钥 `so**_key` | 随机串 | **自动**：本工程不校验授权，随便写 |
+| 证书（TLS 协议才有） | `panel` / `self` / `file` / `http` / `dns` | 客户选一种，见 [CONFIG.md](CONFIG.md) §3 |
 | `type` / `api` | `xboard` / `webapi` | **固定** |
 | `check_interval` / `submit_interval` | `60` / `60` | **固定** |
 | `log_level` | `error` —— **只记错误日志** | **固定** |
@@ -156,8 +161,9 @@ ln -sf /root/so/console/so-console /usr/local/bin/so-console
 | systemd 单元 | 主服务 / `soco@.service` / sink / nft / watchdog | **自动** |
 | 业务端口 | 面板下发，控制台自动探测 | **自动** |
 
-> 自动生成的那串密钥要填回面板的 `webapi_key` 与 `so**_key`（不一致就拉不到用户）；
-> 重跑 `install` 会**沿用已有密钥**，不会换。
+> `webapi_key` 是**面板与节点之间的通信密钥**：填错/随机都会导致节点拉不到用户，必须以面板里的为准。
+> `so**_key` 是**授权密钥**：本工程已解除授权检查，随机串即可。
+> 重跑 `install` 会沿用已有配置里的 `webapi_key`，不会把它换掉。
 
 ---
 
@@ -212,6 +218,7 @@ soco/
 ├── README.md          ← 本文件（前置条件 + 一键命令 + 控制台 + 命令总表）
 ├── install.sh         ← 一键引导脚本（拉项目 → 进控制台）
 ├── DEPLOY.md          ← 完整部署手册（二进制来源、逐步骤、回滚、故障表）
+├── CONFIG.md          ← **配置文件在哪 / 每个字段谁写 / 证书（cert_mode）怎么弄**
 ├── CONSOLE.md         ← 控制台命令参考（输出样例、退出码）
 ├── SECURITY.md        ← 占位符清单：哪些值要换成你自己的
 ├── console/so-console ← 单文件控制台（python3，无第三方依赖）
