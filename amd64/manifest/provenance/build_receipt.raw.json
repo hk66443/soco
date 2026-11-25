@@ -1,0 +1,126 @@
+{
+  "source": "/root/soco-verified-tests/adapter-clean-build-20261121-v1/adapter-amd64-clean.c",
+  "source_sha256": "dd10f8c3c93c0df342448f5c1fafdac9ef72570d28368376f37af6d7f8443ef4",
+  "work": "/root/soco-verified-tests/adapter-clean-build-20261121-v1",
+  "gcc": "/usr/bin/gcc",
+  "gcc_version": {
+    "argv": [
+      "gcc",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "gcc (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "stderr": ""
+  },
+  "headers_preflight": {
+    "argv": [
+      "gcc",
+      "-E",
+      "-x",
+      "c",
+      "-"
+    ],
+    "exit_code": 0,
+    "stdout": "header preprocessor output length=168032",
+    "stderr": ""
+  },
+  "compile": {
+    "argv": [
+      "gcc",
+      "-shared",
+      "-fPIC",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Wl,-z,relro,-z,now",
+      "-o",
+      "libsoco-amd64.so",
+      "adapter-amd64-clean.c",
+      "-lcurl",
+      "-ljson-c"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "output": "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so",
+  "output_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "output_size": 26216,
+  "dynamic": {
+    "argv": [
+      "readelf",
+      "-d",
+      "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so"
+    ],
+    "exit_code": 0,
+    "stdout": "\nDynamic section at offset 0x4c48 contains 28 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libcurl.so.4]\n 0x0000000000000001 (NEEDED)             Shared library: [libjson-c.so.5]\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x000000000000000c (INIT)               0x2000\n 0x000000000000000d (FINI)               0x31b8\n 0x0000000000000019 (INIT_ARRAY)         0x5c30\n 0x000000000000001b (INIT_ARRAYSZ)       16 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x5c40\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x260\n 0x0000000000000005 (STRTAB)             0x778\n 0x0000000000000006 (SYMTAB)             0x280\n 0x000000000000000a (STRSZ)              888 (bytes)\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000003 (PLTGOT)             0x5e48\n 0x0000000000000002 (PLTRELSZ)           1128 (bytes)\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000017 (JMPREL)             0xcb8\n 0x0000000000000007 (RELA)               0xbe0\n 0x0000000000000008 (RELASZ)             216 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW\n 0x000000006ffffffe (VERNEED)            0xb60\n 0x000000006fffffff (VERNEEDNUM)         3\n 0x000000006ffffff0 (VERSYM)             0xaf0\n 0x000000006ffffff9 (RELACOUNT)          4\n 0x0000000000000000 (NULL)               0x0\n",
+    "stderr": ""
+  },
+  "dyn_symbols": {
+    "argv": [
+      "readelf",
+      "--dyn-syms",
+      "--wide",
+      "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so"
+    ],
+    "exit_code": 0,
+    "stdout": "\nSymbol table '.dynsym' contains 53 entries:\n   Num:    Value          Size Type    Bind   Vis      Ndx Name\n     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND \n     1: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND getenv@GLIBC_2.2.5 (2)\n     2: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND __isoc23_strtoul@GLIBC_2.38 (3)\n     3: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_easy_escape@CURL_OPENSSL_4 (4)\n     4: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_new_string@JSONC_0.14 (5)\n     5: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND free@GLIBC_2.2.5 (2)\n     6: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_is_type@JSONC_0.14 (5)\n     7: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND strncmp@GLIBC_2.2.5 (2)\n     8: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_deregisterTMCloneTable\n     9: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _exit@GLIBC_2.2.5 (2)\n    10: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_array_get_idx@JSONC_0.14 (5)\n    11: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_to_json_string_ext@JSONC_0.14 (5)\n    12: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND readlink@GLIBC_2.2.5 (2)\n    13: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_easy_cleanup@CURL_OPENSSL_4 (4)\n    14: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND strlen@GLIBC_2.2.5 (2)\n    15: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND mmap@GLIBC_2.2.5 (2)\n    16: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_get_int64@JSONC_0.14 (5)\n    17: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_easy_setopt@CURL_OPENSSL_4 (4)\n    18: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND snprintf@GLIBC_2.2.5 (2)\n    19: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND strrchr@GLIBC_2.2.5 (2)\n    20: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_object_add@JSONC_0.14 (5)\n    21: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_get_string@JSONC_0.14 (5)\n    22: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_easy_perform@CURL_OPENSSL_4 (4)\n    23: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_tokener_free@JSONC_0.14 (5)\n    24: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND memcmp@GLIBC_2.2.5 (2)\n    25: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND strcmp@GLIBC_2.2.5 (2)\n    26: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_free@CURL_OPENSSL_4 (4)\n    27: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND fprintf@GLIBC_2.2.5 (2)\n    28: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND __gmon_start__\n    29: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND memcpy@GLIBC_2.14 (6)\n    30: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND malloc@GLIBC_2.2.5 (2)\n    31: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_new_array@JSONC_0.14 (5)\n    32: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_tokener_parse@JSONC_0.14 (5)\n    33: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_put@JSONC_0.14 (5)\n    34: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_tokener_parse_ex@JSONC_0.14 (5)\n    35: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND realloc@GLIBC_2.2.5 (2)\n    36: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_global_init@CURL_OPENSSL_4 (4)\n    37: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_tokener_new@JSONC_0.14 (5)\n    38: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND mprotect@GLIBC_2.2.5 (2)\n    39: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND sysconf@GLIBC_2.2.5 (2)\n    40: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_easy_init@CURL_OPENSSL_4 (4)\n    41: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND curl_easy_getinfo@CURL_OPENSSL_4 (4)\n    42: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_tokener_get_error@JSONC_0.14 (5)\n    43: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND fwrite@GLIBC_2.2.5 (2)\n    44: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_get@JSONC_0.14 (5)\n    45: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_registerTMCloneTable\n    46: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_object_get_ex@JSONC_0.14 (5)\n    47: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_new_object@JSONC_0.14 (5)\n    48: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_array_add@JSONC_0.14 (5)\n    49: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND strdup@GLIBC_2.2.5 (2)\n    50: 0000000000000000     0 FUNC    WEAK   DEFAULT  UND __cxa_finalize@GLIBC_2.2.5 (2)\n    51: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND json_object_array_length@JSONC_0.14 (5)\n    52: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND stderr@GLIBC_2.2.5 (2)\n",
+    "stderr": ""
+  },
+  "versions": {
+    "argv": [
+      "readelf",
+      "--version-info",
+      "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so"
+    ],
+    "exit_code": 0,
+    "stdout": "\nVersion symbols section '.gnu.version' contains 53 entries:\n Addr: 0x0000000000000af0  Offset: 0x00000af0  Link: 3 (.dynsym)\n  000:   0 (*local*)       2 (GLIBC_2.2.5)   3 (GLIBC_2.38)    4 (CURL_OPENSSL_4) \n  004:   5 (JSONC_0.14)    2 (GLIBC_2.2.5)   5 (JSONC_0.14)    2 (GLIBC_2.2.5)\n  008:   1 (*global*)      2 (GLIBC_2.2.5)   5 (JSONC_0.14)    5 (JSONC_0.14) \n  00c:   2 (GLIBC_2.2.5)   4 (CURL_OPENSSL_4)    2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  010:   5 (JSONC_0.14)    4 (CURL_OPENSSL_4)    2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  014:   5 (JSONC_0.14)    5 (JSONC_0.14)    4 (CURL_OPENSSL_4)    5 (JSONC_0.14) \n  018:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   4 (CURL_OPENSSL_4)    2 (GLIBC_2.2.5)\n  01c:   1 (*global*)      6 (GLIBC_2.14)    2 (GLIBC_2.2.5)   5 (JSONC_0.14) \n  020:   5 (JSONC_0.14)    5 (JSONC_0.14)    5 (JSONC_0.14)    2 (GLIBC_2.2.5)\n  024:   4 (CURL_OPENSSL_4)    5 (JSONC_0.14)    2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  028:   4 (CURL_OPENSSL_4)    4 (CURL_OPENSSL_4)    5 (JSONC_0.14)    2 (GLIBC_2.2.5)\n  02c:   5 (JSONC_0.14)    1 (*global*)      5 (JSONC_0.14)    5 (JSONC_0.14) \n  030:   5 (JSONC_0.14)    2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   5 (JSONC_0.14) \n  034:   2 (GLIBC_2.2.5)\n\nVersion needs section '.gnu.version_r' contains 3 entries:\n Addr: 0x0000000000000b60  Offset: 0x00000b60  Link: 4 (.dynstr)\n  000000: Version: 1  File: libjson-c.so.5  Cnt: 1\n  0x0010:   Name: JSONC_0.14  Flags: none  Version: 5\n  0x0020: Version: 1  File: libcurl.so.4  Cnt: 1\n  0x0030:   Name: CURL_OPENSSL_4  Flags: none  Version: 4\n  0x0040: Version: 1  File: libc.so.6  Cnt: 3\n  0x0050:   Name: GLIBC_2.14  Flags: none  Version: 6\n  0x0060:   Name: GLIBC_2.38  Flags: none  Version: 3\n  0x0070:   Name: GLIBC_2.2.5  Flags: none  Version: 2\n",
+    "stderr": ""
+  },
+  "elf_header": {
+    "argv": [
+      "readelf",
+      "-h",
+      "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so"
+    ],
+    "exit_code": 0,
+    "stdout": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              DYN (Shared object file)\n  Machine:                           Advanced Micro Devices X86-64\n  Version:                           0x1\n  Entry point address:               0x0\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          24488 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         9\n  Size of section headers:           64 (bytes)\n  Number of section headers:         27\n  Section header string table index: 26\n",
+    "stderr": ""
+  },
+  "ldd": {
+    "argv": [
+      "ldd",
+      "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so"
+    ],
+    "exit_code": 0,
+    "stdout": "\tlinux-vdso.so.1 (0x00007f95f3b06000)\n\tlibcurl.so.4 => /lib/x86_64-linux-gnu/libcurl.so.4 (0x00007f95f3a05000)\n\tlibjson-c.so.5 => /lib/x86_64-linux-gnu/libjson-c.so.5 (0x00007f95f39f1000)\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f95f37fd000)\n\tlibnghttp3.so.9 => /lib/x86_64-linux-gnu/libnghttp3.so.9 (0x00007f95f37d3000)\n\tlibnghttp2.so.14 => /lib/x86_64-linux-gnu/libnghttp2.so.14 (0x00007f95f379f000)\n\tlibidn2.so.0 => /lib/x86_64-linux-gnu/libidn2.so.0 (0x00007f95f376c000)\n\tlibrtmp.so.1 => /lib/x86_64-linux-gnu/librtmp.so.1 (0x00007f95f374e000)\n\tlibssh2.so.1 => /lib/x86_64-linux-gnu/libssh2.so.1 (0x00007f95f3705000)\n\tlibpsl.so.5 => /lib/x86_64-linux-gnu/libpsl.so.5 (0x00007f95f36f1000)\n\tlibssl.so.3 => /lib/x86_64-linux-gnu/libssl.so.3 (0x00007f95f35e1000)\n\tlibcrypto.so.3 => /lib/x86_64-linux-gnu/libcrypto.so.3 (0x00007f95f2e00000)\n\tlibgssapi_krb5.so.2 => /lib/x86_64-linux-gnu/libgssapi_krb5.so.2 (0x00007f95f3589000)\n\tlibldap.so.2 => /lib/x86_64-linux-gnu/libldap.so.2 (0x00007f95f3525000)\n\tliblber.so.2 => /lib/x86_64-linux-gnu/liblber.so.2 (0x00007f95f3514000)\n\tlibzstd.so.1 => /lib/x86_64-linux-gnu/libzstd.so.1 (0x00007f95f344a000)\n\tlibbrotlidec.so.1 => /lib/x86_64-linux-gnu/libbrotlidec.so.1 (0x00007f95f343c000)\n\tlibz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007f95f2dde000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f95f3b08000)\n\tlibunistring.so.5 => /lib/x86_64-linux-gnu/libunistring.so.5 (0x00007f95f2bf6000)\n\tlibgnutls.so.30 => /lib/x86_64-linux-gnu/libgnutls.so.30 (0x00007f95f2800000)\n\tlibhogweed.so.6 => /lib/x86_64-linux-gnu/libhogweed.so.6 (0x00007f95f2bab000)\n\tlibnettle.so.8 => /lib/x86_64-linux-gnu/libnettle.so.8 (0x00007f95f2b55000)\n\tlibgmp.so.10 => /lib/x86_64-linux-gnu/libgmp.so.10 (0x00007f95f2ac9000)\n\tlibkrb5.so.3 => /lib/x86_64-linux-gnu/libkrb5.so.3 (0x00007f95f2728000)\n\tlibk5crypto.so.3 => /lib/x86_64-linux-gnu/libk5crypto.so.3 (0x00007f95f2a9b000)\n\tlibcom_err.so.2 => /lib/x86_64-linux-gnu/libcom_err.so.2 (0x00007f95f2a95000)\n\tlibkrb5support.so.0 => /lib/x86_64-linux-gnu/libkrb5support.so.0 (0x00007f95f2a87000)\n\tlibsasl2.so.2 => /lib/x86_64-linux-gnu/libsasl2.so.2 (0x00007f95f2a69000)\n\tlibbrotlicommon.so.1 => /lib/x86_64-linux-gnu/libbrotlicommon.so.1 (0x00007f95f2a46000)\n\tlibp11-kit.so.0 => /lib/x86_64-linux-gnu/libp11-kit.so.0 (0x00007f95f2587000)\n\tlibtasn1.so.6 => /lib/x86_64-linux-gnu/libtasn1.so.6 (0x00007f95f2a30000)\n\tlibkeyutils.so.1 => /lib/x86_64-linux-gnu/libkeyutils.so.1 (0x00007f95f2a29000)\n\tlibresolv.so.2 => /lib/x86_64-linux-gnu/libresolv.so.2 (0x00007f95f2573000)\n\tlibffi.so.8 => /lib/x86_64-linux-gnu/libffi.so.8 (0x00007f95f2566000)\n",
+    "stderr": ""
+  },
+  "formal_before": {
+    "/usr/local/soga/soga": "c0e0f3965cf871b2aea60f8d01959aeb1848fba86f0cc0a5b928681eb861ffbc",
+    "/usr/local/soco/soco": "1ddc7619a7178c92a5fe37b583db93807c7ae12a87f6cdfff5c7bff3bbfd2e8b",
+    "/usr/local/soco/libsoco.so": "4b8818cc5e73d6bb09fe1b4b958570c29be26a1a374ad92077c1ada9a657eb10",
+    "/etc/soco/soco.conf": "d7879d5b80d4716e4adf763d797cfb88ed3b25fae812b19f4a73285c965bb346",
+    "/etc/systemd/system/soco.service": "c4363bd73cd29055da51bf0065a66dac4dddfc5cb1067213c84b4dc5d90ad131"
+  },
+  "formal_after": {
+    "/usr/local/soga/soga": "c0e0f3965cf871b2aea60f8d01959aeb1848fba86f0cc0a5b928681eb861ffbc",
+    "/usr/local/soco/soco": "1ddc7619a7178c92a5fe37b583db93807c7ae12a87f6cdfff5c7bff3bbfd2e8b",
+    "/usr/local/soco/libsoco.so": "4b8818cc5e73d6bb09fe1b4b958570c29be26a1a374ad92077c1ada9a657eb10",
+    "/etc/soco/soco.conf": "d7879d5b80d4716e4adf763d797cfb88ed3b25fae812b19f4a73285c965bb346",
+    "/etc/systemd/system/soco.service": "c4363bd73cd29055da51bf0065a66dac4dddfc5cb1067213c84b4dc5d90ad131"
+  },
+  "production_unchanged": true,
+  "service_after": {
+    "argv": [
+      "systemctl",
+      "show",
+      "soco.service",
+      "--property=MainPID,ActiveState,SubState,NRestarts,ExecMainStartTimestamp"
+    ],
+    "exit_code": 0,
+    "stdout": "MainPID=80093\nNRestarts=0\nExecMainStartTimestamp=Fri 2026-11-20 20:21:56 UTC\nActiveState=active\nSubState=running\n",
+    "stderr": ""
+  }
+}

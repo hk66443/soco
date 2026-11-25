@@ -1,0 +1,1024 @@
+{
+  "run_id": "mesh-prod-probe-1",
+  "port": 49989,
+  "probes": [
+    {
+      "t": 0.0,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:08:39Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 191.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 20.0,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:08:59Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 211.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 40.0,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:09:19Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 231.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 60.1,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:09:39Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 251.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 80.1,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:09:59Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 271.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 100.1,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:10:19Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 291.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 120.1,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:10:39Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 311.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 140.1,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:10:59Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 331.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 160.1,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:11:19Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 351.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 180.2,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:11:39Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 371.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 200.2,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:11:59Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 391.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 220.2,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:12:19Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 411.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 240.2,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:12:39Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 431.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 260.2,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:12:59Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 451.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 280.2,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:13:19Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 471.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 300.2,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:13:39Z",
+        "listen": 49989,
+        "active": 1,
+        "backends": [
+          {
+            "idx": 1,
+            "internal": 51001,
+            "proxy": 52001,
+            "pid": 168513,
+            "born_s_ago": 491.7,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 320.3,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:13:59Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 20.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 340.3,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:14:19Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 40.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 360.3,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:14:39Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 60.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 380.3,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:14:59Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 80.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 400.3,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:15:19Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 100.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 420.3,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:15:39Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 120.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 440.3,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:15:59Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 140.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 460.4,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:16:19Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 160.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 480.4,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:16:39Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 180.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 500.4,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:16:59Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 200.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 520.4,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:17:19Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 220.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 540.4,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:17:39Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 240.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 560.6,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:17:59Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 260.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 580.6,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:18:20Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 281.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 600.6,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:18:40Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 301.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 620.6,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:19:00Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 321.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 640.6,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:19:20Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 341.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 660.7,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:19:40Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 361.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 680.7,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:20:00Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 381.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 700.7,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:20:20Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 401.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 720.7,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:20:40Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 421.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 740.7,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:21:00Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 441.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 760.7,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:21:20Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 461.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 780.8,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:21:40Z",
+        "listen": 49989,
+        "active": 2,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 481.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 800.8,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:22:01Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 2,
+            "internal": 51002,
+            "proxy": 52002,
+            "pid": 170105,
+            "born_s_ago": 502.4,
+            "retired": true,
+            "established": 0
+          },
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 11.2,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 820.8,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:22:20Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 30.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 840.8,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:22:40Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 50.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 860.8,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:23:00Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 70.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 880.8,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:23:20Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 90.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 900.8,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:23:40Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 110.3,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 920.9,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:24:00Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 130.4,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    },
+    {
+      "t": 940.9,
+      "ok": true,
+      "curl": 0,
+      "mesh": {
+        "utc": "2026-11-22T05:24:20Z",
+        "listen": 49989,
+        "active": 3,
+        "backends": [
+          {
+            "idx": 3,
+            "internal": 51003,
+            "proxy": 52003,
+            "pid": 171457,
+            "born_s_ago": 150.4,
+            "retired": false,
+            "established": 0
+          }
+        ]
+      }
+    }
+  ],
+  "first_failure": null
+}

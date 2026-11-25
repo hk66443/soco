@@ -1,0 +1,18 @@
+[Unit]
+Description=soco instance %i (soga 2.18.1 backend + soco adapter)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=LD_PRELOAD=/usr/local/soco/libsoco.so
+Environment=SOCO_INSTANCE=%i
+WorkingDirectory=/etc/soga
+ExecStart=/usr/local/soco/soco -c /etc/soga/%i.conf
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target

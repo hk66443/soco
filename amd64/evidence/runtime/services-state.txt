@@ -1,0 +1,17 @@
+MainPID=186535
+NRestarts=0
+ExecMainStartTimestamp=Sun 2026-11-22 08:56:51 UTC
+Id=soco.service
+ActiveState=active
+
+MainPID=186591
+NRestarts=0
+ExecMainStartTimestamp=Sun 2026-11-22 08:57:12 UTC
+Id=soco-watchdog.service
+ActiveState=active
+
+MainPID=186487
+NRestarts=0
+ExecMainStartTimestamp=Sun 2026-11-22 08:56:45 UTC
+Id=soco-licence-sink.service
+ActiveState=active

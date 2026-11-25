@@ -1,0 +1,20 @@
+# binaries / large artifacts never enter this repo
+*.exe
+*.zip
+*.7z
+soco-arm64.*
+soco-amd64*
+soga-arm64*
+libsoco*.so
+sing-box*
+xray*
+*.jsonl
+*__result.partial.json
+
+# local scratch
+_push/
+tmp/
+*.pyc
+__pycache__/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,27 @@
+{
+  "schema": "soco-retained-provenance-v1",
+  "kind": "retained-arm64",
+  "output_sha256": "f5fc39df4f988cb4a8eb4c683f914a07d5836b1807720aab7b010736cf83293a",
+  "output_size": 19336,
+  "source_binary_correspondence": "unverified-retained",
+  "source": "src/adapter-arm64.c",
+  "source_sha256": "af15561ebd52b9fb699a6a012ba886907f79ee682806f2313cdc6d51969159f5",
+  "historical_compiler_command": null,
+  "runtime_verified_this_round": false,
+  "dependencies": [
+    "libc.so.6",
+    "libcurl.so.4",
+    "libjson-c.so.5"
+  ],
+  "version_requirements": {
+    "libjson-c.so.5": [
+      "JSONC_0.14"
+    ],
+    "libcurl.so.4": [
+      "CURL_OPENSSL_4"
+    ],
+    "libc.so.6": [
+      "GLIBC_2.17"
+    ]
+  }
+}

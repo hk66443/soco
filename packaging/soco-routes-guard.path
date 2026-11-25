@@ -1,0 +1,9 @@
+[Unit]
+Description=watch /etc/soga/routes.toml for nfu/soga rewrites
+
+[Path]
+PathModified=/etc/soga/routes.toml
+Unit=soco-routes-guard.service
+
+[Install]
+WantedBy=paths.target

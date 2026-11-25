@@ -1,0 +1,1 @@
+{"run_id": "bisect2-r3-bronly-1", "pull": 60, "probes": 43, "fails": 3, "first_failure": {"t": 613.9, "cycles": 11, "ok": false, "curl": 56}, "final_cycles": 11}

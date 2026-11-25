@@ -1,0 +1,70 @@
+{
+  "schema": "soco-adapter-build-provenance-v1",
+  "kind": "adapter-compilation",
+  "source": "adapter-amd64-clean.c",
+  "source_sha256": "dd10f8c3c93c0df342448f5c1fafdac9ef72570d28368376f37af6d7f8443ef4",
+  "output_name": "libsoco-amd64.so",
+  "output_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "output_size": 26216,
+  "recipe": "build_clean_adapter.actual.sh",
+  "recipe_sha256": "95224868ddac717af87e8ba8b2026ef6cf36755f78c1aa2d72965732feaf44f3",
+  "raw_receipt": "build_receipt.raw.json",
+  "raw_receipt_sha256": "aa33a459096c83f3abc2997528e2e8a2b6a8d7d03452bf1bf59084c7ba5bf741",
+  "command": [
+    "gcc",
+    "-shared",
+    "-fPIC",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wl,-z,relro,-z,now",
+    "-o",
+    "libsoco-amd64.so",
+    "adapter-amd64-clean.c",
+    "-lcurl",
+    "-ljson-c"
+  ],
+  "compiler": "/usr/bin/gcc",
+  "compiler_version": "gcc (Debian 14.2.0-19) 14.2.0",
+  "compiler_realpath": null,
+  "target_triplet": null,
+  "build_os": null,
+  "pkg_config_versions": null,
+  "dependencies": [
+    "libc.so.6",
+    "libcurl.so.4",
+    "libjson-c.so.5"
+  ],
+  "version_requirements": {
+    "libjson-c.so.5": [
+      "JSONC_0.14"
+    ],
+    "libcurl.so.4": [
+      "CURL_OPENSSL_4"
+    ],
+    "libc.so.6": [
+      "GLIBC_2.14",
+      "GLIBC_2.2.5",
+      "GLIBC_2.38"
+    ]
+  },
+  "build_id": "4b5db694c7447620279b4250655d15eaaf283d99",
+  "elf_class": 64,
+  "machine": "EM_X86_64",
+  "source_and_output_receipt_linked": true,
+  "recipe_relation": "actual supplied C command file retained; recipe SHA computed locally, not emitted by compiler",
+  "compiled_observed_via_original_receipt": true,
+  "artifact_executed_by_collector": false,
+  "runtime_verified": false,
+  "traffic_verified": false,
+  "missing_actual_probe_fields": [
+    "compiler_realpath",
+    "target_triplet",
+    "build_os",
+    "pkg_config_versions"
+  ],
+  "strict_provenance_ready": false,
+  "minimum_symbol_requirement_glibc": "2.38",
+  "compatibility_claim": "Not a Debian11 compatibility build; actual host runtime tests are separate."
+}

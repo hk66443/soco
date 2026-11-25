@@ -1,0 +1,552 @@
+{
+  "run_id": "lab-fakelic-long",
+  "cand": "/root/soco-verified-tests/candidates/verified53-20261121-minimal-v1/soco",
+  "so": "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so",
+  "pull": 60,
+  "push": 60,
+  "port": 19497,
+  "fixtures": true,
+  "probes": [
+    {
+      "t": 10.8,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 30.8,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 50.8,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 70.8,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 90.9,
+      "cycles": 2,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 110.9,
+      "cycles": 2,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 130.9,
+      "cycles": 2,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 150.9,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 171.0,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 191.0,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 211.0,
+      "cycles": 4,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 231.0,
+      "cycles": 4,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 251.0,
+      "cycles": 4,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 271.0,
+      "cycles": 5,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 291.0,
+      "cycles": 5,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 311.1,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 331.1,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 351.1,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 371.1,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 391.1,
+      "cycles": 7,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 411.1,
+      "cycles": 7,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 431.1,
+      "cycles": 7,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 451.2,
+      "cycles": 8,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 471.2,
+      "cycles": 8,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 491.2,
+      "cycles": 8,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 511.2,
+      "cycles": 9,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 531.2,
+      "cycles": 9,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 551.2,
+      "cycles": 9,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 571.3,
+      "cycles": 10,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 591.3,
+      "cycles": 10,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 611.3,
+      "cycles": 10,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 631.3,
+      "cycles": 11,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 651.3,
+      "cycles": 11,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 671.3,
+      "cycles": 11,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 691.3,
+      "cycles": 11,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 711.4,
+      "cycles": 12,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 731.4,
+      "cycles": 12,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 751.4,
+      "cycles": 13,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 771.4,
+      "cycles": 13,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 791.4,
+      "cycles": 13,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 811.4,
+      "cycles": 14,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 831.4,
+      "cycles": 14,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 851.5,
+      "cycles": 14,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 871.5,
+      "cycles": 15,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 891.5,
+      "cycles": 15,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 911.5,
+      "cycles": 15,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 931.5,
+      "cycles": 16,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 951.5,
+      "cycles": 16,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 971.6,
+      "cycles": 16,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 991.6,
+      "cycles": 17,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1011.6,
+      "cycles": 17,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1031.7,
+      "cycles": 18,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1051.7,
+      "cycles": 18,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1071.7,
+      "cycles": 18,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1091.7,
+      "cycles": 18,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1111.7,
+      "cycles": 19,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1131.7,
+      "cycles": 19,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1151.7,
+      "cycles": 20,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1171.8,
+      "cycles": 20,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1191.8,
+      "cycles": 20,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1211.8,
+      "cycles": 20,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1231.8,
+      "cycles": 21,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1251.8,
+      "cycles": 21,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1271.8,
+      "cycles": 21,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1291.8,
+      "cycles": 22,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1311.9,
+      "cycles": 22,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1331.9,
+      "cycles": 22,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1351.9,
+      "cycles": 23,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1371.9,
+      "cycles": 23,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1391.9,
+      "cycles": 23,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1411.9,
+      "cycles": 24,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1431.9,
+      "cycles": 24,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1452.0,
+      "cycles": 24,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1472.0,
+      "cycles": 25,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1492.0,
+      "cycles": 25,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1512.0,
+      "cycles": 25,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1532.0,
+      "cycles": 26,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1552.0,
+      "cycles": 26,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1572.1,
+      "cycles": 26,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1592.1,
+      "cycles": 27,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1612.1,
+      "cycles": 27,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1632.1,
+      "cycles": 27,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1652.1,
+      "cycles": 28,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1672.1,
+      "cycles": 28,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1692.1,
+      "cycles": 29,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1712.2,
+      "cycles": 29,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1732.2,
+      "cycles": 29,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1752.2,
+      "cycles": 29,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1772.2,
+      "cycles": 30,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 1792.2,
+      "cycles": 30,
+      "ok": true,
+      "curl": 0
+    }
+  ],
+  "first_failure": null
+}

@@ -1,0 +1,7 @@
+[Unit]
+Description=soco routes guard (re-apply Netflix/OpenAI TW route after nfu regenerates routes.toml)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/soco/routes-guard.py
+Nice=5

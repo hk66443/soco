@@ -1,0 +1,2 @@
+c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed  /usr/local/soco/soco
+2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7  /usr/local/soco/libsoco.so

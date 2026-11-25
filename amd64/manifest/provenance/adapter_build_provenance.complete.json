@@ -1,0 +1,74 @@
+{
+  "schema": "soco-adapter-build-provenance-v1",
+  "kind": "adapter-compilation",
+  "source": "adapter-amd64-clean.c",
+  "source_sha256": "dd10f8c3c93c0df342448f5c1fafdac9ef72570d28368376f37af6d7f8443ef4",
+  "output_name": "libsoco-amd64.so",
+  "output_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "output_size": 26216,
+  "recipe": "build_clean_adapter.actual.sh",
+  "recipe_sha256": "95224868ddac717af87e8ba8b2026ef6cf36755f78c1aa2d72965732feaf44f3",
+  "raw_receipt": "build_receipt.raw.json",
+  "raw_receipt_sha256": "aa33a459096c83f3abc2997528e2e8a2b6a8d7d03452bf1bf59084c7ba5bf741",
+  "command": [
+    "gcc",
+    "-shared",
+    "-fPIC",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wl,-z,relro,-z,now",
+    "-o",
+    "libsoco-amd64.so",
+    "adapter-amd64-clean.c",
+    "-lcurl",
+    "-ljson-c"
+  ],
+  "compiler": "/usr/bin/gcc",
+  "compiler_version": "gcc (Debian 14.2.0-19) 14.2.0",
+  "compiler_realpath": "/usr/bin/x86_64-linux-gnu-gcc-14",
+  "target_triplet": "x86_64-linux-gnu",
+  "build_os": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.7\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+  "pkg_config_versions": {
+    "libcurl": "8.14.1",
+    "json-c": "0.18"
+  },
+  "dependencies": [
+    "libc.so.6",
+    "libcurl.so.4",
+    "libjson-c.so.5"
+  ],
+  "version_requirements": {
+    "libjson-c.so.5": [
+      "JSONC_0.14"
+    ],
+    "libcurl.so.4": [
+      "CURL_OPENSSL_4"
+    ],
+    "libc.so.6": [
+      "GLIBC_2.14",
+      "GLIBC_2.2.5",
+      "GLIBC_2.38"
+    ]
+  },
+  "build_id": "4b5db694c7447620279b4250655d15eaaf283d99",
+  "elf_class": 64,
+  "machine": "EM_X86_64",
+  "source_and_output_receipt_linked": true,
+  "recipe_relation": "actual supplied C command file retained; recipe SHA computed locally, not emitted by compiler",
+  "compiled_observed_via_original_receipt": true,
+  "artifact_executed_by_collector": false,
+  "runtime_verified": false,
+  "traffic_verified": false,
+  "missing_actual_probe_fields": [],
+  "strict_provenance_ready": true,
+  "minimum_symbol_requirement_glibc": "2.38",
+  "compatibility_claim": "Not a Debian11 compatibility build; actual host runtime tests are separate.",
+  "revision": 2,
+  "previous_record": "adapter_build_provenance.json",
+  "previous_record_sha256": "b480fadfbcb9c06d9fe4fe4c7421c660e57201e318c2a90239fb2a7f53c49fba",
+  "environment_supplement": "build_env_supplement.raw.json",
+  "environment_supplement_sha256": "f09eebd59af83f4ab9d8c0cd8b053883500ca874b7f15369df9e93e00e3efd0a",
+  "pkg_config_path": "/usr/bin/pkg-config"
+}

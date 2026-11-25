@@ -1,0 +1,16 @@
+[Unit]
+Description=soco 0.1.0 (soga backend with panel adapter)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=LD_PRELOAD=/usr/local/soco/libsoco.so
+ExecStart=/usr/local/soco/soco -c /etc/soco/soco.conf
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target

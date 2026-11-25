@@ -1,0 +1,199 @@
+{
+  "status": "DEPLOYED_VERIFIED",
+  "supersedes": "README 中「本证据不是生产 49989 已升级部署」的历史表述：生产 49989 已于本次切换并验证",
+  "host": "141.148.139.236",
+  "node_id": 341,
+  "service": "soco.service",
+  "listen_port": 49989,
+  "deployed": {
+    "binary_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+    "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+    "config_sha256": "d7879d5b80d4716e4adf763d797cfb88ed3b25fae812b19f4a73285c965bb346",
+    "config_modified": true,
+    "unit_sha256_after": "b86d3044d983174717e4e8d27e5536d44e4a7090ce59564fb1c93439b4f9cf9d",
+    "unit_injects_SOCO_LIMIT_after": false,
+    "unit_note": "deploy_final_v2.py 在启动前断言新 unit 文本不含 SOCO_LIMIT（断言通过才启动）"
+  },
+  "replaced": {
+    "old_binary_sha256": "1ddc7619a7178c92a5fe37b583db93807c7ae12a87f6cdfff5c7bff3bbfd2e8b",
+    "old_adapter_sha256": "4b8818cc5e73d6bb09fe1b4b958570c29be26a1a374ad92077c1ada9a657eb10",
+    "old_pid": "98900",
+    "old_loaded_users": 88,
+    "cause": "旧单元注入 SOCO_LIMIT=88，用户上限被钉在 88"
+  },
+  "new_runtime": {
+    "pid": "100320",
+    "active": "active",
+    "sub_state": "running",
+    "n_restarts": "0",
+    "same_pid_after_validation": true,
+    "listener_ready_seconds": 10.19,
+    "first_cycle_counts": [
+      97
+    ],
+    "go_counts": [
+      97,
+      97,
+      97
+    ],
+    "extra_refresh_cycles": 2,
+    "panel_count": 97,
+    "soco_limit_absent_actual_procenv": true,
+    "adapter_maps_present": true,
+    "key_error_log_count": 1,
+    "key_error_note": "与本次改动无关：切换前长期正常运行的旧组合同样每条启动日志都有该条 key 错误；不阻塞用户加载与转发"
+  },
+  "runtime_tests": {
+    "positives": [
+      {
+        "phase": "initial",
+        "ordinal": 1,
+        "positive_all_passed": true,
+        "request": [
+          {
+            "scheme": "http",
+            "HTTP": 200,
+            "tls_version": null,
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          },
+          {
+            "scheme": "https",
+            "HTTP": 200,
+            "tls_version": "TLSv1.3",
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          }
+        ]
+      },
+      {
+        "phase": "initial",
+        "ordinal": 97,
+        "positive_all_passed": true,
+        "request": [
+          {
+            "scheme": "http",
+            "HTTP": 200,
+            "tls_version": null,
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          },
+          {
+            "scheme": "https",
+            "HTTP": 200,
+            "tls_version": "TLSv1.3",
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          }
+        ]
+      },
+      {
+        "phase": "after-two-refresh",
+        "ordinal": 1,
+        "positive_all_passed": true,
+        "request": [
+          {
+            "scheme": "http",
+            "HTTP": 200,
+            "tls_version": null,
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          },
+          {
+            "scheme": "https",
+            "HTTP": 200,
+            "tls_version": "TLSv1.3",
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          }
+        ]
+      },
+      {
+        "phase": "after-two-refresh",
+        "ordinal": 97,
+        "positive_all_passed": true,
+        "request": [
+          {
+            "scheme": "http",
+            "HTTP": 200,
+            "tls_version": null,
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          },
+          {
+            "scheme": "https",
+            "HTTP": 200,
+            "tls_version": "TLSv1.3",
+            "curl_exit_code": 0,
+            "egress_ip": "141.148.139.236",
+            "egress_matches_node": true,
+            "socks_request_granted": true,
+            "owned_path_correlated": true
+          }
+        ]
+      }
+    ],
+    "all_positives_passed": true,
+    "negative": {
+      "wrong_password_rejected": true,
+      "HTTP": 0,
+      "curl_exit_code": 52,
+      "proxy_bypass_prevented": true
+    }
+  },
+  "self_check": {
+    "soco_verify_exit_code": 0
+  },
+  "preserved": {
+    "original_soga_binary_unchanged": true,
+    "enabled_state_before": "disabled",
+    "enabled_state_after": "disabled",
+    "rollback_used": false
+  },
+  "rollback_available": {
+    "backup_root": "/root/soco-backup-final-20261121-v2",
+    "command": "python3 /root/soco-backup-final-20261121-v2/rollback.py"
+  },
+  "prior_failure_root_cause": {
+    "run": "installed-node341-final-20261121-v1",
+    "failed_at_seconds": 0.932,
+    "cause": "验证器在服务绑定 49989 之前即时断言 owned_production_listeners 非空（真实就绪需约 10s），不是候选程序缺陷",
+    "fix": "部署改用 postdeploy_validate_v2.py：先轮询 listener 与首个 Go refresh 周期，再做 egress/identity 断言"
+  },
+  "evidence": {
+    "validator_result": "installed-v2-result.json",
+    "validator_result_sha256": "b39d4f3cec9faed2969a8cb9d3175c2d0412e5a629f3c41a3b37a9733c2df8c1",
+    "deploy_receipt": "deploy_receipt_v2.json",
+    "deploy_receipt_sha256": "f8e4c4da86836e9642bac72e40ec60ae00a70e19bf734b887d6fb569c648b764",
+    "validation_execution": "validation_execution_v2.json",
+    "validation_execution_sha256": "d01d01d23acf79a8d821e2a3caf7ef3d06356d015c319aabba809f97e4c391b2",
+    "validator_exit_code": 0,
+    "remote_paths": {
+      "run": "/root/soco-verified-tests/installed-node341-final-20261121-v2/",
+      "deploy": "/root/soco-verified-tests/final-deploy-20261121-v2/",
+      "exec_log": "/root/soco-verified-tests/deploy-v2-exec.log"
+    }
+  },
+  "scope": "生产 49989 首/末账号 + 两次真实刷新周期后复测；不代表 6000 并发、全部账号或长稳 48h 结论"
+}

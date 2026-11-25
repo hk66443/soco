@@ -1,0 +1,620 @@
+{
+  "schema": "soco-protocol-acceptance-v1",
+  "created_utc": "2026-11-21T08:00:13.517420+00:00",
+  "project": "soco 0.1.0 amd64",
+  "functional_accepted": true,
+  "protocols": [
+    "ss2022",
+    "vless-tcp"
+  ],
+  "counts": [
+    89,
+    97,
+    6000
+  ],
+  "initial_transfer_count": 24,
+  "including_refresh_rechecks_transfer_count": 28,
+  "valid_negative_controls": 6,
+  "local_static": {
+    "python_version": "3.12.14",
+    "syntax_compile_exit_code": 0,
+    "unit_tests": 14,
+    "unit_exit_code": 0,
+    "network_or_listener_used": false
+  },
+  "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+  "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "client_sha256": "1264361b5f8868c8768f7555d3e77e20118bf503c41ac08bb290a0d99056aa3a",
+  "ports": {
+    "proxy": 18591,
+    "mock": 19551,
+    "http": 19552,
+    "https": 19553,
+    "client_socks": 19554
+  },
+  "production": {
+    "main_pid": 80093,
+    "active_at_preflight": true,
+    "state_and_restart_count_unchanged": true,
+    "binary_adapter_config_unit_hashes_unchanged": true,
+    "formal_adapter_sha256": "4b8818cc5e73d6bb09fe1b4b958570c29be26a1a374ad92077c1ada9a657eb10",
+    "evidence_basis": "Every raw case and summary production_unchanged is true; runner initial guards require active PID80093 and compare full service fields/exe/netns/hashes to final snapshot. Original snapshots are referenced per case."
+  },
+  "cases": [
+    {
+      "protocol": "ss2022",
+      "panel_count": 89,
+      "functional_accepted": true,
+      "raw_case_passed": true,
+      "summary_sha256": "bae77d51e9d3244eddef4f88386ff4c47de2134121a7180255229d906c67a88c",
+      "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+      "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+      "so_limit": 0,
+      "initial_responses": [
+        {
+          "ordinal": 1,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-ss2022-N89-limit0-initial-user1-http",
+          "body_sha256": "8ecbc12f66dd00664a38eaf14d9de1774b71cf10d5d7840e46debe68019a5e8e",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 1,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-ss2022-N89-limit0-initial-user1-https",
+          "body_sha256": "a2879e3b001f66a11bda4ce8482858f9be6b02595b96b9f59f33ce82f62d5459",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 89,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-ss2022-N89-limit0-initial-user89-http",
+          "body_sha256": "9d766948843104dd14ef5588a64500c1cc2fed971cbadccf1a9a9b74d069a4d7",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 89,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-ss2022-N89-limit0-initial-user89-https",
+          "body_sha256": "9b771709605fc1c055531d71cfedc197562b6e5b6a2c1d9ce9c159fcc9a9cd02",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        }
+      ],
+      "negative": {
+        "kind": "wrong-user-key",
+        "valid": true,
+        "rejected": true,
+        "curl_exit_code": 52,
+        "http_status": 0,
+        "fixture_hits": 0
+      },
+      "go_count": 89,
+      "native_json_count": null,
+      "native_load_verified": null,
+      "key_error_log_count": 0,
+      "refresh": {
+        "requested_seconds": 0.0,
+        "new_go_counts": [],
+        "extra_5cycle_criterion_met": null,
+        "after_refresh_transfer_count": 0,
+        "note": "Not requested."
+      },
+      "server_pid": 96855,
+      "cleaned_pids": [
+        96855,
+        96882,
+        96899,
+        96917
+      ],
+      "cleanup_all_exit0_and_not_alive": true,
+      "production_unchanged": true,
+      "private_netns": "net:[4026532207]",
+      "production_netns": "net:[4026531840]",
+      "only_lo": true,
+      "observed_proxy_wildcard": true,
+      "summary_label": "ss2022_N89_summary_v2.json"
+    },
+    {
+      "protocol": "ss2022",
+      "panel_count": 97,
+      "functional_accepted": true,
+      "raw_case_passed": false,
+      "summary_sha256": "6574a3f7c0ebaf56ca2e2dd557df7cfba803e7c170cb756ec3163ee2e910f01c",
+      "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+      "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+      "so_limit": 0,
+      "initial_responses": [
+        {
+          "ordinal": 1,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-ss2022-N97-limit0-initial-user1-http",
+          "body_sha256": "01f2eb59727745d823ea6508b33b2c2fa26dc97dacae4e73016d9e4872e48c12",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 1,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-ss2022-N97-limit0-initial-user1-https",
+          "body_sha256": "9aeedd3bdd119c87026a8bce6855cdc957736260980cc8f607bb02dbe98a3cf0",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 97,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-ss2022-N97-limit0-initial-user97-http",
+          "body_sha256": "1a4de84e508f0b5a6c80a0db101e93adefe363b0fd4edba172a82e04d7cfa706",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 97,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-ss2022-N97-limit0-initial-user97-https",
+          "body_sha256": "fd93cb7aa7d2e919a9d39dde3c0114d47d22924296fb8654df7bfe812d6ccd07",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        }
+      ],
+      "negative": {
+        "kind": "wrong-user-key",
+        "valid": true,
+        "rejected": true,
+        "curl_exit_code": 52,
+        "http_status": 0,
+        "fixture_hits": 0
+      },
+      "go_count": 97,
+      "native_json_count": null,
+      "native_load_verified": null,
+      "key_error_log_count": 0,
+      "refresh": {
+        "requested_seconds": 18.0,
+        "new_go_counts": [
+          97,
+          97,
+          97,
+          97
+        ],
+        "extra_5cycle_criterion_met": false,
+        "after_refresh_transfer_count": 4,
+        "note": "Four new cycles and all rechecks passed; the optional five-cycle criterion was not met, original false flag retained."
+      },
+      "server_pid": 97072,
+      "cleaned_pids": [
+        97072,
+        97099,
+        97117,
+        97170,
+        97187,
+        97206
+      ],
+      "cleanup_all_exit0_and_not_alive": true,
+      "production_unchanged": true,
+      "private_netns": "net:[4026532207]",
+      "production_netns": "net:[4026531840]",
+      "only_lo": true,
+      "observed_proxy_wildcard": true,
+      "summary_label": "ss2022_N97_summary_v2.json"
+    },
+    {
+      "protocol": "ss2022",
+      "panel_count": 6000,
+      "functional_accepted": true,
+      "raw_case_passed": true,
+      "summary_sha256": "f75a44263903868e55f63582b79bee5282c732658d8116cd77d76b81360972e5",
+      "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+      "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+      "so_limit": 0,
+      "initial_responses": [
+        {
+          "ordinal": 1,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-ss2022-N6000-limit0-initial-user1-http",
+          "body_sha256": "39583b57170e05ed4f803e3233cc9b3fb205d15450fe2f03838762bb25c833fb",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 1,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-ss2022-N6000-limit0-initial-user1-https",
+          "body_sha256": "3a493453d8e83aa2249d8c0d06d06c7697cdf899289c20d973af5bb23692464a",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 6000,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-ss2022-N6000-limit0-initial-user6000-http",
+          "body_sha256": "bb2d0e2d8ae45753d7631ba6395e679dbc256e6657deedc5a88e95444b337b65",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 6000,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-ss2022-N6000-limit0-initial-user6000-https",
+          "body_sha256": "1e66acddfe370729ba7100c9a90333ce1f82412232fa29958fed93a621cb9e44",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        }
+      ],
+      "negative": {
+        "kind": "wrong-user-key",
+        "valid": true,
+        "rejected": true,
+        "curl_exit_code": 56,
+        "http_status": 0,
+        "fixture_hits": 0
+      },
+      "go_count": 6000,
+      "native_json_count": null,
+      "native_load_verified": null,
+      "key_error_log_count": 0,
+      "refresh": {
+        "requested_seconds": 0.0,
+        "new_go_counts": [],
+        "extra_5cycle_criterion_met": null,
+        "after_refresh_transfer_count": 0,
+        "note": "Not requested."
+      },
+      "server_pid": 97388,
+      "cleaned_pids": [
+        97388,
+        97416,
+        97446,
+        97463
+      ],
+      "cleanup_all_exit0_and_not_alive": true,
+      "production_unchanged": true,
+      "private_netns": "net:[4026532207]",
+      "production_netns": "net:[4026531840]",
+      "only_lo": true,
+      "observed_proxy_wildcard": true,
+      "summary_label": "ss2022-N6000_summary_v2.json"
+    },
+    {
+      "protocol": "vless-tcp",
+      "panel_count": 89,
+      "functional_accepted": true,
+      "raw_case_passed": true,
+      "summary_sha256": "128e9051ff005b5bd2858d4d69efdcc55f21f48e4e589fdb63095f3d0729de64",
+      "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+      "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+      "so_limit": 0,
+      "initial_responses": [
+        {
+          "ordinal": 1,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-vless-tcp-N89-limit0-initial-user1-http",
+          "body_sha256": "488a47fdfa0c4f76de50915c8622c92c1b1833ff805a1e95ae80c4279157637b",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 1,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-vless-tcp-N89-limit0-initial-user1-https",
+          "body_sha256": "21a8762ffbeaeca812822ffccf94ddee97eede4b8f58eea3e51ffaaa93c48884",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 89,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-vless-tcp-N89-limit0-initial-user89-http",
+          "body_sha256": "8d567abc02575ee22fc931e45357436ad42d95966943698f7f43604a92980503",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 89,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-vless-tcp-N89-limit0-initial-user89-https",
+          "body_sha256": "d38580b7a194c997d55cc22d025a18a175e80df6facf2aab2cdd6ed204e1432b",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        }
+      ],
+      "negative": {
+        "kind": "wrong-UUID",
+        "valid": true,
+        "rejected": true,
+        "curl_exit_code": 56,
+        "http_status": 0,
+        "fixture_hits": 0
+      },
+      "go_count": 89,
+      "native_json_count": null,
+      "native_load_verified": null,
+      "key_error_log_count": 0,
+      "refresh": {
+        "requested_seconds": 0.0,
+        "new_go_counts": [],
+        "extra_5cycle_criterion_met": null,
+        "after_refresh_transfer_count": 0,
+        "note": "Not requested."
+      },
+      "server_pid": 97503,
+      "cleaned_pids": [
+        97503,
+        97534,
+        97552,
+        97569
+      ],
+      "cleanup_all_exit0_and_not_alive": true,
+      "production_unchanged": true,
+      "private_netns": "net:[4026532207]",
+      "production_netns": "net:[4026531840]",
+      "only_lo": true,
+      "observed_proxy_wildcard": true,
+      "summary_label": "vless-tcp-N89_summary_v2.json"
+    },
+    {
+      "protocol": "vless-tcp",
+      "panel_count": 97,
+      "functional_accepted": true,
+      "raw_case_passed": true,
+      "summary_sha256": "64702c693c1c73c1570b2f36a95ad0dec2fa6feaf46cab4752d8839355d3e9ce",
+      "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+      "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+      "so_limit": 0,
+      "initial_responses": [
+        {
+          "ordinal": 1,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-vless-tcp-N97-limit0-initial-user1-http",
+          "body_sha256": "26cfd375b4f96faec74702313f5b0145a8b162e448bc1b1b217fa44783b67ed2",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 1,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-vless-tcp-N97-limit0-initial-user1-https",
+          "body_sha256": "e72176b20c1f3f4d23c2d1c866a8795b5d3df1cf00ca419c96b935855363142d",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 97,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-vless-tcp-N97-limit0-initial-user97-http",
+          "body_sha256": "d2c4bd01c9e22304536524d12fee93dcc58a31dbcb09c64d2f1e22ad158d096a",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 97,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-vless-tcp-N97-limit0-initial-user97-https",
+          "body_sha256": "97d6a0d281200a87f26f062c4080c18490aa22dc349d174be3d4497247fe319a",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        }
+      ],
+      "negative": {
+        "kind": "wrong-UUID",
+        "valid": true,
+        "rejected": true,
+        "curl_exit_code": 56,
+        "http_status": 0,
+        "fixture_hits": 0
+      },
+      "go_count": 97,
+      "native_json_count": null,
+      "native_load_verified": null,
+      "key_error_log_count": 0,
+      "refresh": {
+        "requested_seconds": 0.0,
+        "new_go_counts": [],
+        "extra_5cycle_criterion_met": null,
+        "after_refresh_transfer_count": 0,
+        "note": "Not requested."
+      },
+      "server_pid": 97608,
+      "cleaned_pids": [
+        97608,
+        97640,
+        97658,
+        97677
+      ],
+      "cleanup_all_exit0_and_not_alive": true,
+      "production_unchanged": true,
+      "private_netns": "net:[4026532207]",
+      "production_netns": "net:[4026531840]",
+      "only_lo": true,
+      "observed_proxy_wildcard": true,
+      "summary_label": "vless-tcp-N97_summary_v2.json"
+    },
+    {
+      "protocol": "vless-tcp",
+      "panel_count": 6000,
+      "functional_accepted": true,
+      "raw_case_passed": true,
+      "summary_sha256": "1854a90b1c7b119e37e9ffd9dea4aa35968d0d5fac82a971200599361fd5aa97",
+      "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+      "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+      "so_limit": 0,
+      "initial_responses": [
+        {
+          "ordinal": 1,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-vless-tcp-N6000-limit0-initial-user1-http",
+          "body_sha256": "ce4f9d85ac5acde5e652682f68504b0194803298564675792165590548e4717f",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 1,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-vless-tcp-N6000-limit0-initial-user1-https",
+          "body_sha256": "d8bb9a70116a9d95fa9e77f5aabd8345a702186dd2b5fb9dbc133cba64162d29",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 6000,
+          "transport": "http",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": null,
+          "certificate_verified": null,
+          "marker": "verified53-vless-tcp-N6000-limit0-initial-user6000-http",
+          "body_sha256": "edd4c9226e2f6e51fa16f399d8e7ca65e5884c1914c7ee5261c258825e4b0d5c",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        },
+        {
+          "ordinal": 6000,
+          "transport": "https",
+          "curl_exit_code": 0,
+          "http_status": 200,
+          "tls_version": "TLSv1.3",
+          "certificate_verified": true,
+          "marker": "verified53-vless-tcp-N6000-limit0-initial-user6000-https",
+          "body_sha256": "0f5f97ac19c72f9d031ab0c362f28fd8a87d75c784e5e21de8c21e1a87eb12f0",
+          "marker_and_fixture_hash_verified": true,
+          "socks_and_owned_socket_chain_verified": true
+        }
+      ],
+      "negative": {
+        "kind": "wrong-UUID",
+        "valid": true,
+        "rejected": true,
+        "curl_exit_code": 52,
+        "http_status": 0,
+        "fixture_hits": 0
+      },
+      "go_count": 6000,
+      "native_json_count": null,
+      "native_load_verified": null,
+      "key_error_log_count": 0,
+      "refresh": {
+        "requested_seconds": 0.0,
+        "new_go_counts": [],
+        "extra_5cycle_criterion_met": null,
+        "after_refresh_transfer_count": 0,
+        "note": "Not requested."
+      },
+      "server_pid": 97714,
+      "cleaned_pids": [
+        97714,
+        97747,
+        97764,
+        97781
+      ],
+      "cleanup_all_exit0_and_not_alive": true,
+      "production_unchanged": true,
+      "private_netns": "net:[4026532207]",
+      "production_netns": "net:[4026531840]",
+      "only_lo": true,
+      "observed_proxy_wildcard": true,
+      "summary_label": "vless-tcp-N6000_summary_v2.json"
+    }
+  ],
+  "limitations": [
+    "Only two self-created first/last identities per protocol/count; no all-user or concurrent capacity claim.",
+    "native_json_count/native_load_verified stay null without bounded native evidence.",
+    "SS2022 N97 functional checks pass but optional five-new-cycle criterion did not complete in 18 seconds; original case_passed=false retained.",
+    "External HTTP/TLS Internet integration prepared but not run.",
+    "Source test scripts, SSH credentials and fixture secrets are not part of the formal binary/adapter package.",
+    "Original first N89 harness-identity error is preserved separately; it is not a protocol failure."
+  ],
+  "original_acceptance_sha256": "5e0e49f9e5f9ba2bc3be38c1e9067363eb12e64b1a30c03b8fbd676d01b077a5",
+  "data_minimization": "No raw client configs/identity rows/key values/private keys; original summaries pinned by SHA only."
+}

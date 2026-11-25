@@ -1,0 +1,17 @@
+[Unit]
+Description=soco watchdog - pre-emptive restart + real SS2022 handshake probe
+After=soco.service
+Wants=soco.service
+
+[Service]
+Type=simple
+Environment=PROBE_EVERY=30
+Environment=FAILS_TO_RESTART=3
+Environment=PREEMPT_SECONDS=0
+ExecStart=/usr/bin/python3 /usr/local/soco/soco-watchdog.py
+Restart=always
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,700 @@
+{
+  "cases": [
+    {
+      "sha256": "bae77d51e9d3244eddef4f88386ff4c47de2134121a7180255229d906c67a88c",
+      "case": "verified53-ss2022-N89-limit0",
+      "positive_count": 4,
+      "tests": [
+        [
+          1,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          89,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          89,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "all_raw_positive_checks": true,
+      "negative_valid": true,
+      "negative_rejected": true,
+      "negative_exit": 52,
+      "negative_http_status": 0,
+      "negative_fixture_records": 0,
+      "go_count": 89,
+      "native_json_count": null,
+      "key_errors": 0,
+      "production_unchanged": true,
+      "case_passed": true,
+      "refresh_go_counts": [],
+      "refresh_observed": null,
+      "server_pid": 96855,
+      "cleanup": [
+        {
+          "label": "own-candidate-verified53-ss2022-N89-limit0",
+          "pid": 96855,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user1",
+          "pid": 96882,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user89",
+          "pid": 96899,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-negative-user1-wrong",
+          "pid": 96917,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        }
+      ],
+      "source_label": "ss2022_N89_summary_v2.json"
+    },
+    {
+      "sha256": "6574a3f7c0ebaf56ca2e2dd557df7cfba803e7c170cb756ec3163ee2e910f01c",
+      "case": "verified53-ss2022-N97-limit0",
+      "positive_count": 8,
+      "tests": [
+        [
+          1,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          97,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          97,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "after-refresh",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "after-refresh",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          97,
+          "after-refresh",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          97,
+          "after-refresh",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "all_raw_positive_checks": true,
+      "negative_valid": true,
+      "negative_rejected": true,
+      "negative_exit": 52,
+      "negative_http_status": 0,
+      "negative_fixture_records": 0,
+      "go_count": 97,
+      "native_json_count": null,
+      "key_errors": 0,
+      "production_unchanged": true,
+      "case_passed": false,
+      "refresh_go_counts": [
+        97,
+        97,
+        97,
+        97
+      ],
+      "refresh_observed": false,
+      "server_pid": 97072,
+      "cleanup": [
+        {
+          "label": "own-candidate-verified53-ss2022-N97-limit0",
+          "pid": 97072,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user1",
+          "pid": 97099,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user97",
+          "pid": 97117,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-after-refresh-user1",
+          "pid": 97170,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-after-refresh-user97",
+          "pid": 97187,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-negative-user1-wrong",
+          "pid": 97206,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        }
+      ],
+      "source_label": "ss2022_N97_summary_v2.json"
+    },
+    {
+      "sha256": "f75a44263903868e55f63582b79bee5282c732658d8116cd77d76b81360972e5",
+      "case": "verified53-ss2022-N6000-limit0",
+      "positive_count": 4,
+      "tests": [
+        [
+          1,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          6000,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          6000,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "all_raw_positive_checks": true,
+      "negative_valid": true,
+      "negative_rejected": true,
+      "negative_exit": 56,
+      "negative_http_status": 0,
+      "negative_fixture_records": 0,
+      "go_count": 6000,
+      "native_json_count": null,
+      "key_errors": 0,
+      "production_unchanged": true,
+      "case_passed": true,
+      "refresh_go_counts": [],
+      "refresh_observed": null,
+      "server_pid": 97388,
+      "cleanup": [
+        {
+          "label": "own-candidate-verified53-ss2022-N6000-limit0",
+          "pid": 97388,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user1",
+          "pid": 97416,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user6000",
+          "pid": 97446,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-negative-user1-wrong",
+          "pid": 97463,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        }
+      ],
+      "source_label": "ss2022-N6000_summary_v2.json"
+    },
+    {
+      "sha256": "128e9051ff005b5bd2858d4d69efdcc55f21f48e4e589fdb63095f3d0729de64",
+      "case": "verified53-vless-tcp-N89-limit0",
+      "positive_count": 4,
+      "tests": [
+        [
+          1,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          89,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          89,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "all_raw_positive_checks": true,
+      "negative_valid": true,
+      "negative_rejected": true,
+      "negative_exit": 56,
+      "negative_http_status": 0,
+      "negative_fixture_records": 0,
+      "go_count": 89,
+      "native_json_count": null,
+      "key_errors": 0,
+      "production_unchanged": true,
+      "case_passed": true,
+      "refresh_go_counts": [],
+      "refresh_observed": null,
+      "server_pid": 97503,
+      "cleanup": [
+        {
+          "label": "own-candidate-verified53-vless-tcp-N89-limit0",
+          "pid": 97503,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user1",
+          "pid": 97534,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user89",
+          "pid": 97552,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-negative-user1-wrong",
+          "pid": 97569,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        }
+      ],
+      "source_label": "vless-tcp-N89_summary_v2.json"
+    },
+    {
+      "sha256": "64702c693c1c73c1570b2f36a95ad0dec2fa6feaf46cab4752d8839355d3e9ce",
+      "case": "verified53-vless-tcp-N97-limit0",
+      "positive_count": 4,
+      "tests": [
+        [
+          1,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          97,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          97,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "all_raw_positive_checks": true,
+      "negative_valid": true,
+      "negative_rejected": true,
+      "negative_exit": 56,
+      "negative_http_status": 0,
+      "negative_fixture_records": 0,
+      "go_count": 97,
+      "native_json_count": null,
+      "key_errors": 0,
+      "production_unchanged": true,
+      "case_passed": true,
+      "refresh_go_counts": [],
+      "refresh_observed": null,
+      "server_pid": 97608,
+      "cleanup": [
+        {
+          "label": "own-candidate-verified53-vless-tcp-N97-limit0",
+          "pid": 97608,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user1",
+          "pid": 97640,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user97",
+          "pid": 97658,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-negative-user1-wrong",
+          "pid": 97677,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        }
+      ],
+      "source_label": "vless-tcp-N97_summary_v2.json"
+    },
+    {
+      "sha256": "1854a90b1c7b119e37e9ffd9dea4aa35968d0d5fac82a971200599361fd5aa97",
+      "case": "verified53-vless-tcp-N6000-limit0",
+      "positive_count": 4,
+      "tests": [
+        [
+          1,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          1,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ],
+        [
+          6000,
+          "initial",
+          200,
+          0,
+          null,
+          null,
+          true,
+          true,
+          true
+        ],
+        [
+          6000,
+          "initial",
+          200,
+          0,
+          "TLSv1.3",
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      "all_raw_positive_checks": true,
+      "negative_valid": true,
+      "negative_rejected": true,
+      "negative_exit": 52,
+      "negative_http_status": 0,
+      "negative_fixture_records": 0,
+      "go_count": 6000,
+      "native_json_count": null,
+      "key_errors": 0,
+      "production_unchanged": true,
+      "case_passed": true,
+      "refresh_go_counts": [],
+      "refresh_observed": null,
+      "server_pid": 97714,
+      "cleanup": [
+        {
+          "label": "own-candidate-verified53-vless-tcp-N6000-limit0",
+          "pid": 97714,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user1",
+          "pid": 97747,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-initial-user6000",
+          "pid": 97764,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        },
+        {
+          "label": "own-sing-box-negative-user1-wrong",
+          "pid": 97781,
+          "exit_code": 0,
+          "was_running": true,
+          "alive_after": false,
+          "identity_checked": "Popen.pid + exe + starttime; initial args + cwd if argv rewritten",
+          "argv_changed_observed": false
+        }
+      ],
+      "source_label": "vless-tcp-N6000_summary_v2.json"
+    }
+  ],
+  "functional_all_passed": true,
+  "positive_http_tls_transfers": 28,
+  "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+  "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "original_review_sha256": "396b52fa28fb5acfc382540127c54eb98394c65e050ba8fc93d481bf05c48ec6"
+}

@@ -1,0 +1,159 @@
+{
+  "pass": true,
+  "N": 6000,
+  "key_test": "empty",
+  "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+  "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "check_interval": 3,
+  "submit_interval": 3,
+  "refresh_cycles_observed": 5,
+  "go_counts": [
+    6000,
+    6000,
+    6000,
+    6000,
+    6000,
+    6000
+  ],
+  "actual_go_cycle_count": 6,
+  "panel_user_requests": 12,
+  "panel_counts_consistent": true,
+  "transfer_checks": [
+    {
+      "phase": "tests",
+      "ordinal": 1,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N6000-limit0-user1",
+          "origin_matches": true,
+          "hash": "e212e806e832cd34deb3e72d050a4578b4b334e7cb8a6b3be70e90cab98db9c1",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N6000-limit0-user1",
+          "origin_matches": true,
+          "hash": "7605a28133a46afe83fad74a935971fe297f397c28376f60e70473d170690584",
+          "error": null
+        }
+      ]
+    },
+    {
+      "phase": "tests",
+      "ordinal": 6000,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N6000-limit0-user6000",
+          "origin_matches": true,
+          "hash": "6e6d11557ba97b3d75fe695980d2f8dd78a4cb8845eaad64b43e6df9ed88144d",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N6000-limit0-user6000",
+          "origin_matches": true,
+          "hash": "33ae15bd6410bbbd869713461cf131909e195303e2cd85727028b5645534a453",
+          "error": null
+        }
+      ]
+    },
+    {
+      "phase": "tests_after_refresh",
+      "ordinal": 1,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N6000-limit0-after-refresh-user1",
+          "origin_matches": true,
+          "hash": "4d8ca64c848cfdc0ef7e267fbd7aa8b1882d1742a2554bb7c071850426bfe2ef",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N6000-limit0-after-refresh-user1",
+          "origin_matches": true,
+          "hash": "4f488537f43ac76cc72547b791822ff48ce6cc5b1bd9b648e1c7199a60413e03",
+          "error": null
+        }
+      ]
+    },
+    {
+      "phase": "tests_after_refresh",
+      "ordinal": 6000,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N6000-limit0-after-refresh-user6000",
+          "origin_matches": true,
+          "hash": "81e81d433f2b7d257376a862fccacb5093149f4fc036384aeefcab971447b751",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N6000-limit0-after-refresh-user6000",
+          "origin_matches": true,
+          "hash": "fe7ee9a0317ed6cfb25eae9c9fccda388fa9722ac52119413b6ca4df77f78101",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "negative_controls": [
+    {
+      "field": "wrong_password",
+      "pass": true,
+      "error_type": "ConnectionResetError",
+      "target_requests": 0
+    },
+    {
+      "field": "wrong_password_after_refresh",
+      "pass": true,
+      "error_type": "ConnectionResetError",
+      "target_requests": 0
+    }
+  ],
+  "SOCO_LIMIT_absent_actual_procenv": true,
+  "key_error_log_count": 0,
+  "cfg_dump_log_count": 0,
+  "users_guess_log_count": 0,
+  "not_found_user_log_count": 2,
+  "namespace_only_loopback": true,
+  "production_unchanged": true,
+  "test_pid": 96188,
+  "cleanup": {
+    "label": "own-test-server",
+    "pid": 96188,
+    "exit_code": 0,
+    "was_running": true,
+    "stopped_by_runner": true,
+    "alive_after": false
+  },
+  "summary_sha256": "e434ded0ceb57380d1d0902eead5020ae3f6e62b75109d5f2fbcfdd77b994ca7",
+  "fixture_sha256": "a7986445bf4946598b63e1abcd815d11acb5ad6c87babc5cf31b4ac67ded84f6",
+  "namespace_sha256": "5fcff828630513c4ee061ff5e5843f70b56737545f9d1c218728b1b536f49f2e",
+  "elapsed_seconds": 39.01489,
+  "harness_error": null,
+  "scope": "Synthetic AESGCM, first/last only; 5 actual refresh cycles observed; not concurrent/all-account validation"
+}

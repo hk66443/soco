@@ -1,0 +1,1 @@
+{"run_id": "bisect-r1b-last4A-1", "pull": 60, "probes": 43, "fails": 3, "first_failure": {"t": 618.4, "cycles": 11, "ok": false, "curl": 52}, "final_cycles": 11}

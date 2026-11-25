@@ -1,0 +1,21 @@
+[Unit]
+Description=soco mesh - relay on 49989 + rotating backends (no restarts of live instances)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=MESH_LISTEN=49989
+Environment=MESH_PORT_BASE=51000
+Environment=MESH_PROXY_BASE=52000
+Environment=MESH_ROTATE=480
+Environment=MESH_GRACE=1800
+Environment=MESH_CHECK=20
+Environment=MESH_READY_TIMEOUT=45
+ExecStart=/usr/bin/python3 /usr/local/soco/soco-mesh.py
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

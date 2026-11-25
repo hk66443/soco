@@ -1,0 +1,138 @@
+{
+  "schema": "soco-runtime-summary-delivery-v1",
+  "source_summary_sha256": "cbe11cffba043ea2e288031fe2810d65b5a2d475006cde8c51c98d38e14a7cee",
+  "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+  "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "N": 97,
+  "key_test": "invalid",
+  "cipher": "aes-256-gcm",
+  "go_counts": [
+    97,
+    97,
+    97,
+    97,
+    97,
+    97,
+    97
+  ],
+  "refresh_cycles_observed": 5,
+  "tests": [
+    {
+      "phase": "tests",
+      "ordinal": 1,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N97-limit0-user1",
+          "origin_matches": true,
+          "hash": "d9fe4dbb408c9a59394566e5b7b3613c9391b612ea05d770f1e30d68a54c3a59",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N97-limit0-user1",
+          "origin_matches": true,
+          "hash": "a0333848aa062253e187dcd3e7cb9d70fa33986ef4c0c11f5c886313f885fe76",
+          "error": null
+        }
+      ]
+    },
+    {
+      "phase": "tests",
+      "ordinal": 97,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N97-limit0-user97",
+          "origin_matches": true,
+          "hash": "53797af9abb5a6615bfafeec6d49690d11cdcfc89d96f6473fc53c73e88cce2c",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N97-limit0-user97",
+          "origin_matches": true,
+          "hash": "8507f7cf55f3a4fe3e375884d99388aae17d883ef0119cf142afdb87fc6e97b6",
+          "error": null
+        }
+      ]
+    },
+    {
+      "phase": "tests_after_refresh",
+      "ordinal": 1,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N97-limit0-after-refresh-user1",
+          "origin_matches": true,
+          "hash": "e543d87e0bcec772a077bd4270c569ba2144e922ab6502381b69b597bc9f0166",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N97-limit0-after-refresh-user1",
+          "origin_matches": true,
+          "hash": "effc630106fd8fde679386b1a11aef8f162d0acf7f358e5262424c0537be987e",
+          "error": null
+        }
+      ]
+    },
+    {
+      "phase": "tests_after_refresh",
+      "ordinal": 97,
+      "pass": true,
+      "responses": [
+        {
+          "transport": "HTTP",
+          "HTTP": 200,
+          "TLS": null,
+          "marker": "verified53-N97-limit0-after-refresh-user97",
+          "origin_matches": true,
+          "hash": "bc7d19d427e58d3a33034511a611dab4d030407c5fb535a0c29005962e48d51f",
+          "error": null
+        },
+        {
+          "transport": "HTTPS",
+          "HTTP": 200,
+          "TLS": "TLSv1.3",
+          "marker": "verified53-N97-limit0-after-refresh-user97",
+          "origin_matches": true,
+          "hash": "84d0530cb1d2f3cd196cb343de5d3ede30edd8ebb5a9aec6b7043f718a344950",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "negative_controls": [
+    {
+      "field": "wrong_password",
+      "pass": true,
+      "error_type": "ConnectionResetError",
+      "target_requests": 0
+    },
+    {
+      "field": "wrong_password_after_refresh",
+      "pass": true,
+      "error_type": "ConnectionResetError",
+      "target_requests": 0
+    }
+  ],
+  "production_unchanged": true,
+  "source_path": "clean53-invalid-N97-20261121/summary.json",
+  "data_minimization": "no panel config/API keys, credential values, identity rows, client fixtures or TLS private keys copied"
+}

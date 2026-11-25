@@ -1,0 +1,18 @@
+[Unit]
+Description=soco (soga 2.18.1 backend + soco adapter, main instance)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=LD_PRELOAD=/usr/local/soco/libsoco.so
+WorkingDirectory=/etc/soga
+# 不写 -c：soco 的默认配置就是 /etc/soga/soga.conf（与 soga 完全一致）
+ExecStart=/usr/local/soco/soco
+Restart=always
+RestartSec=5
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target

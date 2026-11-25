@@ -1,0 +1,29 @@
+# /etc/soga/routes.toml 补丁：Netflix / ChatGPT 走台湾 NF 出口
+# 背景：2026-11-25 实测 node-us(38383) 对 netflix/disney/hbo 全部超时、openai TLS 断；
+#       node-tw(20558) / node-sg(20955) 对 netflix/disney/hbo/prime 全 200；只有 tw 对 chatgpt 200。
+# 用法：把本块插在 routes.toml 的 `enable=true` 之后（必须放最前，匹配按顺序），然后重启 soco。
+# 注意：`nfu soga` 重新生成 routes.toml 会覆盖本块，重跑后要补回。
+
+[[routes]]
+rules=[
+    "geosite:netflix",
+    "domain:netflix.com",
+    "domain:nflxvideo.net",
+    "domain:nflximg.net",
+    "geosite:openai",
+    "domain:chatgpt.com",
+    "domain:chatgpt.site",
+    "domain:chat.com",
+    "domain:openai.com",
+    "domain:oaistatic.com",
+    "domain:oaiusercontent.com",
+    "domain:oaistatsig.com"
+]
+
+[[routes.Outs]]
+listen=""
+type="ss"
+server="node-tw.nfdns.xyz"
+port=20558
+password="<REDACTED-NF-PASSWORD>-200e-4b79-900e-bd125a77c611"
+cipher="chacha20-ietf-poly1305"

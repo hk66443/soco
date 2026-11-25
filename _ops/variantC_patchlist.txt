@@ -1,0 +1,12 @@
+# variantC = variantB + 8 closure rets + 2 nil-error leaves
+# format: file_off va before_hex after_hex label
+0x218f5c0 0x319f5c0 900b40f9 c0035fd6 Ke3Pasll._jIcEtfai4.func2.func1
+0x2191580 0x31a1580 900b40f9 c0035fd6 Ke3Pasll._jIcEtfai4.func1.func1
+0x2193580 0x31a3580 900b40f9 c0035fd6 Ke3Pasll.jvauV_P.func1.func1
+0x21955a0 0x31a55a0 900b40f9 c0035fd6 Ke3Pasll.jvauV_P.func2.func1
+0x21a7840 0x31b7840 900b40f9 c0035fd6 JfPfDr1BO._jIcEtfai4.func2.func1
+0x21a97f0 0x31b97f0 900b40f9 c0035fd6 JfPfDr1BO._jIcEtfai4.func1.func1
+0x21ab8e0 0x31bb8e0 900b40f9 c0035fd6 JfPfDr1BO.jvauV_P.func2.func1
+0x21ad9c0 0x31bd9c0 900b40f9 c0035fd6 JfPfDr1BO.jvauV_P.func1.func1
+0x1d985e0 0x2da85e0 900b40f9f1c300d13f0210eb 000080d2010080d2c0035fd6 E2L2TNbFODvd.O8ecjRSd0zK (xboard nil-error leaf)
+0x1d82c50 0x2d92c50 900b40f9f10301d13f0210eb 000080d2010080d2c0035fd6 E2L2TNbFODvd.IfBgxLwq4 (generic nil-error leaf)

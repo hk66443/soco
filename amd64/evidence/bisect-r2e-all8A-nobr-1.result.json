@@ -1,0 +1,275 @@
+{
+  "run_id": "bisect-r2e-all8A-nobr-1",
+  "cand": "/root/soco-verified-tests/candidates/bisect-r2e-all8A-nobr-1/soco",
+  "so": "/root/soco-verified-tests/adapter-clean-build-20261121-v1/libsoco-amd64.so",
+  "pull": 60,
+  "push": 60,
+  "port": 19852,
+  "fixtures": true,
+  "probes": [
+    {
+      "t": 12.7,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 27.7,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 42.7,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 57.8,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 72.8,
+      "cycles": 1,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 87.8,
+      "cycles": 2,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 102.8,
+      "cycles": 2,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 117.8,
+      "cycles": 2,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 132.8,
+      "cycles": 2,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 147.9,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 162.9,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 177.9,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 192.9,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 208.0,
+      "cycles": 3,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 223.0,
+      "cycles": 4,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 238.0,
+      "cycles": 4,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 253.0,
+      "cycles": 4,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 268.1,
+      "cycles": 4,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 283.1,
+      "cycles": 5,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 298.1,
+      "cycles": 5,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 313.1,
+      "cycles": 5,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 328.1,
+      "cycles": 5,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 343.1,
+      "cycles": 5,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 358.2,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 373.2,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 388.2,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 403.2,
+      "cycles": 6,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 418.2,
+      "cycles": 7,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 433.2,
+      "cycles": 7,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 448.2,
+      "cycles": 7,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 463.3,
+      "cycles": 7,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 478.3,
+      "cycles": 8,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 493.3,
+      "cycles": 8,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 508.3,
+      "cycles": 8,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 523.3,
+      "cycles": 8,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 538.3,
+      "cycles": 9,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 553.4,
+      "cycles": 9,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 568.4,
+      "cycles": 9,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 583.4,
+      "cycles": 9,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 598.4,
+      "cycles": 10,
+      "ok": true,
+      "curl": 0
+    },
+    {
+      "t": 613.4,
+      "cycles": 10,
+      "ok": false,
+      "curl": 52
+    },
+    {
+      "t": 618.4,
+      "cycles": 10,
+      "ok": false,
+      "curl": 52
+    },
+    {
+      "t": 623.4,
+      "cycles": 10,
+      "ok": false,
+      "curl": 52
+    }
+  ],
+  "first_failure": {
+    "t": 613.4,
+    "cycles": 10,
+    "ok": false,
+    "curl": 52
+  }
+}

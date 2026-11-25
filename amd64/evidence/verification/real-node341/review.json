@@ -1,0 +1,78 @@
+{
+  "passed": true,
+  "real_panel_node": 341,
+  "actual_panel_and_go_count": 97,
+  "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+  "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "transfers": [
+    {
+      "ordinal": 1,
+      "scheme": "http",
+      "HTTP": 200,
+      "TLS": null,
+      "curl_exit_code": 0,
+      "egress_ip": "141.148.139.236",
+      "SOCKS_and_socket_path_verified": true
+    },
+    {
+      "ordinal": 1,
+      "scheme": "https",
+      "HTTP": 200,
+      "TLS": "TLSv1.3",
+      "curl_exit_code": 0,
+      "egress_ip": "141.148.139.236",
+      "SOCKS_and_socket_path_verified": true
+    },
+    {
+      "ordinal": 97,
+      "scheme": "http",
+      "HTTP": 200,
+      "TLS": null,
+      "curl_exit_code": 0,
+      "egress_ip": "141.148.139.236",
+      "SOCKS_and_socket_path_verified": true
+    },
+    {
+      "ordinal": 97,
+      "scheme": "https",
+      "HTTP": 200,
+      "TLS": "TLSv1.3",
+      "curl_exit_code": 0,
+      "egress_ip": "141.148.139.236",
+      "SOCKS_and_socket_path_verified": true
+    }
+  ],
+  "negative_control": {
+    "valid": true,
+    "rejected": true,
+    "curl_exit": 52,
+    "HTTP": 0
+  },
+  "SOCO_LIMIT_absent_actual_procenv": true,
+  "key_error_log_count": 0,
+  "production_unchanged": true,
+  "production_pid": "80093",
+  "test_ports_released": [
+    "19191",
+    "19741",
+    "19594"
+  ],
+  "server_pid": 98062,
+  "server_cleanup": {
+    "pid": 98062,
+    "label": "isolated-real341-soco",
+    "exit_code": 0,
+    "alive_after": false,
+    "identity_verified": "Popen PID/exe/starttime/cwd; mutable argv not treated as identity"
+  },
+  "client_pids": [
+    98085,
+    98104,
+    98122
+  ],
+  "relay_closed": true,
+  "real_panel_writes_forwarded": 0,
+  "raw_result_sha256": "5436c1dbeadf88ca10fdc0421f7f69fe1f41f2ebe71a1a1a2747ec5b6fb42c7b",
+  "scope": "Real node341 first and last of 97 users, not all-users or concurrent load; read-only panel snapshot relay with local submission acknowledgements",
+  "elapsed_seconds": 15.0946
+}

@@ -1,0 +1,77 @@
+{
+  "run": "real341-ss2022-firstlast-20261121-v2",
+  "passed": true,
+  "panel_count": 97,
+  "go_counts": [
+    97
+  ],
+  "key_errors": 0,
+  "tests": [
+    {
+      "ordinal": 1,
+      "pass": true,
+      "HTTP_TLS": [
+        [
+          200,
+          null,
+          0,
+          {
+            "ip": "141.148.139.236"
+          },
+          true
+        ],
+        [
+          200,
+          "TLSv1.3",
+          0,
+          {
+            "ip": "141.148.139.236"
+          },
+          true
+        ]
+      ]
+    },
+    {
+      "ordinal": 97,
+      "pass": true,
+      "HTTP_TLS": [
+        [
+          200,
+          null,
+          0,
+          {
+            "ip": "141.148.139.236"
+          },
+          true
+        ],
+        [
+          200,
+          "TLSv1.3",
+          0,
+          {
+            "ip": "141.148.139.236"
+          },
+          true
+        ]
+      ]
+    }
+  ],
+  "negative_valid": true,
+  "negative_rejected": true,
+  "production_unchanged": true,
+  "server_pid": 98062,
+  "cleanup": {
+    "pid": 98062,
+    "label": "isolated-real341-soco",
+    "exit_code": 0,
+    "alive_after": false,
+    "identity_verified": "Popen PID/exe/starttime/cwd; mutable argv not treated as identity"
+  },
+  "harness_error": null,
+  "candidate_sha256": "c463791ac4bf9ba82f28b8e87b148976f13397e1407ddab04d366579e4c80fed",
+  "adapter_sha256": "2f60b5f881c9ae462a9de843eaea4471bd4a386a467c4e4c82042355c7998ab7",
+  "artifact_linkage_basis": "parent verified fixed artifact paths; full raw result attachment pending download",
+  "original_execution_receipt_sha256": "78b4854fa4c176b19f212d1645681aa2e7f12ddffbc976af099a89d3cebd6882",
+  "evidence_kind": "observed real-node execution summary (not full raw result)",
+  "local_scope": "node341 SS2022 on independent port19191, first/last of97; production49989 not deployed"
+}
