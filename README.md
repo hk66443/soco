@@ -1,6 +1,6 @@
-# soco / soga v2.18.1 · amd64 + arm64 双架构定制工程
+# soco / so** v2.18.1 · amd64 + arm64 双架构定制工程
 
-> 一套可复现的工程包：把 `soga v2.18.1`（闭源 · garble 混淆 · Go）的 **88 用户上限** 和 **600 秒授权闸门**
+> 一套可复现的工程包：把 `so** v2.18.1`（闭源 · garble 混淆 · Go）的 **88 用户上限** 和 **600 秒授权闸门**
 > 在两台生产节点上解掉，并留下源码、补丁生成器、systemd 单元、验证夹具与全部实测证据。
 >
 > - 只想操作机器 → **[USAGE-AMD.md](USAGE-AMD.md)** / **[USAGE-ARM.md](USAGE-ARM.md)**
@@ -23,7 +23,7 @@
 | 600 秒闸门 | **环境旁路**：hosts 4 条 + 本机 sink + nft dnat | **环境旁路 + variantE 补回 8 处 `mov #3→xzr`** |
 | 用户数实测 | **497/497 逐个真实握手通过**（1178 s 串行） | **497/497 逐个真实握手通过**（388 s 串行） |
 | 流媒体分流 | 无（SS2022 单协议） | `routes.toml` **11 条**（NF/ChatGPT → TW，其余走 US） |
-| 多实例 | `soco@.service` + `/usr/bin/soco`（`/etc/soga/*.conf`） | 同左（2026-11-25 统一） |
+| 多实例 | `soco@.service` + `/usr/bin/soco`（`/etc/so**/*.conf`） | 同左（2026-11-25 统一） |
 | 运维手册 | [USAGE-AMD.md](USAGE-AMD.md) | [USAGE-ARM.md](USAGE-ARM.md) |
 
 > 两台**互不依赖**，各自独立部署；不要跨机器照搬（协议栈不同、补丁位置不同、端口不同）。
@@ -68,7 +68,7 @@ python3 -u /root/soco-pkg/probe_many.py 497 > /root/soco-verified-tests/probe497
 
 1. **看端口在听 = 会被骗。** 停摆态下 `LISTEN` 一直在，`nc -z` 能连上，但 accept 后**立即 close 且不读任何字节**；
    已建立的长连接也不受影响。唯一可信判据是**真实协议握手 + 断言返回内容**（`probe_v2.py` / `probe_many.py`）。
-2. **600 秒是"检查结果"驱动的。** 同一条 `soga key` 检查，三种结局三种后果：
+2. **600 秒是"检查结果"驱动的。** 同一条 `so** key` 检查，三种结局三种后果：
 
 | 600 s 时授权检查的结局 | 数据面 |
 |---|---|
