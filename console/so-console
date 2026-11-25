@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
-# so-console â€” one-file control console for a soco node (amd64 / arm64)
-#
-#   ./so-console                  # interactive console (numbered menu)
-#   ./so-console status|install|probe 497|gate|routes switch tw|logs soco ...
-#
-# Nothing here is host-specific: every path/dir comes from /etc/so/console.conf
-# (created by `install`), so the same file runs on any Debian x86_64 / aarch64 box.
+"""so-console · 一键部署与运维控制台（amd64 / arm64 通用）  v2.0
+
+设计原则
+  · 客户只填三项：节点 ID、协议、面板地址；其余（端口/间隔/日志/单元/证书/闸门）全部固定。
+  · 节点密钥自动生成（随机），不需要客户提供；面板侧若已有值，可用 --webapi-key 覆盖。
+  · 日志固定只记错误（log_level=error），不刷审计流水。
+  · 流媒体分流由其它程序负责，本控制台只做「只读查看」。
+  · install 幂等：重复执行 = 修复。
+
+两种用法
+  so-console                     交互控制台
+  so-console install --node-id 12 --type ss --url https://panel.example.com
+"""
+import argparse
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -16,24 +24,265 @@ import tarfile
 import time
 from pathlib import Path
 
+VERSION = '2.0'
 CFG = Path(os.environ.get('SO_CONSOLE_CONF', '/etc/so/console.conf'))
-try:  # never die on a cp936/latin console
+try:                                    # never die on a cp936/latin console
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 except Exception:
     pass
+
 DEF = {
-    'pkg': '/root/so',                 # where this project was uploaded
-    'bin_dir': '/usr/local/soco',      # soco, libsoco.so, sing-box-probe, licence/
-    'conf': '/etc/soga/soga.conf',     # main node config (as the binary expects it)
-    'inst_dir': '/etc/soga',           # multi-instance configs: <inst>.conf
+    'pkg': '/root/so',
+    'bin_dir': '/usr/local/soco',
+    'conf': '/etc/soga/soga.conf',
+    'inst_dir': '/etc/soga',
     'service': 'soco',
-    'port': '',                        # business port (auto-detected if empty)
-    'arch': '',                        # amd64 | arm64 (auto-detected if empty)
+    'port': '',
+    'arch': '',
 }
+FIXED = {                               # 固定参数：客户不需要填，也不允许改
+    'type': 'xboard',
+    'api': 'webapi',
+    'check_interval': '60',
+    'submit_interval': '60',
+    'log_level': 'error',
+}
+PROTOS = {'1': ('ss', 'Shadowsocks 2022（推荐 x86_64）'),
+          '2': ('vless', 'VLESS + REALITY（推荐 aarch64）'),
+          'ss': ('ss', 'Shadowsocks 2022'),
+          'vless': ('vless', 'VLESS + REALITY')}
+LICENCE_HOSTS = ['sksjd.vaxilu.com', 'agdfgkdfg.singledance.xyz',
+                 'boiudihsdfk.singledance.xyz', 'sxp7hu5t.cilema.xyz']
+
+# ══════════════════════════════════════════════════════════════ UI
+ANSI = sys.stdout.isatty() and os.environ.get('NO_COLOR') is None
+
+
+def col(code, s):
+    return '\033[%sm%s\033[0m' % (code, s) if ANSI else s
+
+
+B, D, G, Y, R = '1', '2', '32', '33', '31'
+
+
+def rule(title=''):
+    line = '─' * 62
+    print(col(B, '── %s %s' % (title, line[len(title) + 3:])) if title else col(D, line))
+
+
+def head(title):
+    print()
+    print(col(B, '╭─ %s' % title))
+    print(col(D, '╰' + '─' * 62))
+
+
+def say(msg=''):
+    print(msg)
+
+
+def _w(s):
+    """显示宽度：CJK/全角按 2 列算，用于对齐。"""
+    return sum(2 if ord(ch) > 0x2E7F else 1 for ch in str(s))
+
+
+def _pad(s, width):
+    s = str(s)
+    return s + ' ' * max(0, width - _w(s))
+
+
+def kv(k, v, width=22):
+    print('  %s%s %s' % (col(D, _pad(k, width)), col(D, '·'), v))
+
+
+def ok(msg):
+    print('  %s %s' % (col(G, '✔'), msg))
+
+
+def warn(msg):
+    print('  %s %s' % (col(Y, '!'), msg))
+
+
+def bad(msg):
+    print('  %s %s' % (col(R, '✘'), msg))
+
+
+def step(i, n, name, state='', note=''):
+    if state == 'run' and not ANSI:      # non-tty: only print the result line
+        return
+    tag = {'run': col(Y, '…'), 'ok': col(G, 'PASS'), 'fail': col(R, 'FAIL'),
+           'skip': col(D, 'SKIP')}.get(state, '')
+    print('  [%d/%d] %s %s %s %s' % (i, n, _pad(name, 26), col(D, '·' * 8), tag, note))
+
+
+def table(rows, headers):
+    cols = [str(h) for h in headers] + [str(x) for r in rows for x in r]
+    widths = [max(_w(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
+    print('  ' + '  '.join(col(B, _pad(str(h), widths[i])) for i, h in enumerate(headers)))
+    print('  ' + '  '.join(col(D, '─' * widths[i]) for i in range(len(headers))))
+    for r in rows:
+        print('  ' + '  '.join(_pad(str(r[i]), widths[i]) for i in range(len(headers))))
+
+
+def ask(label, default=None, valid=None, hint=''):
+    while True:
+        tail = ' [%s]' % default if default else ''
+        try:
+            v = input('  %s%s: ' % (label, col(D, tail))).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise SystemExit(130)
+        if not v and default:
+            v = default
+        if v and (valid is None or re.fullmatch(valid, v)):
+            return v
+        if v:
+            warn(hint or '格式不对，请重输')
+
+
+def confirm(label, default='n'):
+    try:
+        v = input('  %s [%s]: ' % (label, 'Y/n' if default == 'y' else 'y/N')).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise SystemExit(130)
+    return (v or default) == 'y'
+
+
+# ══════════════════════════════════════════════════════════════ plumbing
+def cfg_load():
+    d = dict(DEF)
+    if CFG.is_file():
+        for line in CFG.read_text(encoding='utf-8').splitlines():
+            if '=' in line and not line.lstrip().startswith('#'):
+                k, v = line.split('=', 1)
+                d[k.strip()] = v.strip()
+    return d
+
+
+def cfg_save(d):
+    CFG.parent.mkdir(parents=True, exist_ok=True)
+    CFG.write_text(''.join('%s=%s\n' % (k, v) for k, v in d.items()), encoding='utf-8')
+
+
+def sh(cmd, timeout=180):
+    try:
+        p = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True,
+                           text=True, timeout=timeout)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except subprocess.TimeoutExpired:
+        return 124, 'timeout'
+    except FileNotFoundError as e:
+        return 127, str(e)
+
+
+def out(cmd):
+    return sh(cmd)[1].strip()
+
+
+def is_root():
+    return getattr(os, 'geteuid', lambda: 0)() == 0
+
+
+def arch():
+    m = os.uname().machine if hasattr(os, 'uname') else ''
+    return 'arm64' if m in ('aarch64', 'arm64') else 'amd64'
+
+
+def read_hosts():
+    try:
+        return Path('/etc/hosts').read_text(errors='replace')
+    except OSError:
+        return ''
+
+
+def svc_state(name):
+    return (out(['systemctl', 'is-active', name]) or 'unknown')
+
+
+def main_pid(svc):
+    return out(['systemctl', 'show', svc, '-p', 'MainPID', '--value'])
+
+
+def svc_props(svc, *props):
+    args = ['systemctl', 'show', svc]
+    for prop in props:
+        args += ['-p', prop]
+    return out(args + ['--value']).split('\n')
+
+
+def journal(svc, since='-10min', timeout=90):
+    return sh(['journalctl', '-u', svc, '--since', since, '-o', 'cat'], timeout=timeout)[1]
+
+
+def last_user_num(svc):
+    nums = re.findall(r'current user num:\s*(\d+)', journal(svc, '-20min'))
+    return nums[-1] if nums else '-'
+
+
+def last_routes_line(svc):
+    # journalctl --grep 由 systemd 侧过滤（注意：不要加 -n，-n 在过滤前截断，会漏）
+    rc, s = sh(['journalctl', '-u', svc, '--grep', 'load routes config', '-o', 'cat'],
+               timeout=120)
+    if rc != 0 or 'load routes config' not in s:
+        s = sh(['journalctl', '-u', svc, '-n', '4000', '-o', 'cat'], timeout=90)[1]
+        s = '\n'.join(l for l in s.splitlines() if 'load routes config' in l)
+    for ln in reversed(s.strip().splitlines()):
+        if 'load routes config' in ln:
+            return ln.split('load routes config')[-1].strip()[:90]
+    return '-'
+
+
+def probe_script(c):
+    for p in (Path(c['bin_dir']) / 'probe_many.py', Path(c['pkg']) / '_ops' / 'probe_many.py',
+              Path(c['pkg']) / 'probe_many.py', Path('/root/soco-pkg/probe_many.py')):
+        if p.is_file():
+            return p
+    return None
+
+
+def det_port(c):
+    if c['port']:
+        return c['port']
+    conf = Path(c['conf'])
+    if conf.is_file():
+        m = re.findall(r'^(?:listen_port|local_port|server_port|listen)\s*=\s*(\d+)',
+                       conf.read_text(errors='replace'), re.M)
+        if m:
+            return m[0]
+    for p in re.findall(r':(\d{4,5})\s', out(['ss', '-lnt'])):
+        if p in ('49989', '49999'):
+            return p
+    return ''
+
+
+def port_of_service(svc):
+    """业务端口：按主进程 PID 反查监听套接字（比读配置可靠）。"""
+    pid = main_pid(svc)
+    if pid in ('', '0'):
+        return ''
+    for ln in out(['ss', '-lntup']).splitlines():
+        if 'pid=%s,' % pid in ln:
+            m = re.search(r':(\d{4,5})\s', ln)
+            if m:
+                return m.group(1)
+    return ''
+
+
+def key_of(path, name, default=''):
+    try:
+        for ln in Path(path).read_text(errors='replace').splitlines():
+            if ln.split('=', 1)[0].strip() == name:
+                return ln.split('=', 1)[1].strip()
+    except OSError:
+        pass
+    return default
+
+
+# ══════════════════════════════════════════════════════════════ units
 UNITS = {
     'soco.service': """[Unit]
-Description=soco node
+Description=soco node (managed by so-console)
 After=network-online.target
 Wants=network-online.target
 
@@ -44,12 +293,13 @@ ExecStart={bin_dir}/soco
 Restart=always
 RestartSec=5
 LimitNOFILE=1048576
+LogLevelMax=warning
 
 [Install]
 WantedBy=multi-user.target
 """,
     'soco@.service': """[Unit]
-Description=soco node instance %i
+Description=soco node instance %i (managed by so-console)
 After=network-online.target
 
 [Service]
@@ -59,6 +309,7 @@ ExecStart={bin_dir}/soco -c {inst_dir}/%i.conf
 Restart=always
 RestartSec=5
 LimitNOFILE=1048576
+LogLevelMax=warning
 
 [Install]
 WantedBy=multi-user.target
@@ -77,7 +328,7 @@ RestartSec=3
 WantedBy=multi-user.target
 """,
     'soco-sink-redirect.service': """[Unit]
-Description=redirect 127.0.0.1:443 to the licence sink
+Description=dnat 127.0.0.1:443 -> licence sink
 After=soco-licence-sink.service
 
 [Service]
@@ -106,551 +357,680 @@ RestartSec=10
 WantedBy=multi-user.target
 """,
 }
-LICENCE_HOSTS = ['sksjd.vaxilu.com', 'agdfgkdfg.singledance.xyz',
-                 'boiudihsdfk.singledance.xyz', 'sxp7hu5t.cilema.xyz']
+UNITS_ORDER = ['soco-licence-sink.service', 'soco-sink-redirect.service',
+               'soco.service', 'soco-watchdog.service']
 
 
-# ------------------------------------------------------------------ plumbing
-def cfg_load():
-    d = dict(DEF)
-    if CFG.is_file():
-        for line in CFG.read_text(encoding='utf-8').splitlines():
-            if '=' in line and not line.lstrip().startswith('#'):
-                k, v = line.split('=', 1)
-                d[k.strip()] = v.strip()
-    return d
+# ══════════════════════════════════════════════════════════════ deploy core
+def write_conf(path, node_id, stype, url, key, inst_name='main'):
+    body = ['# generated by so-console %s at %s  (edit via so-console, not by hand)'
+            % (VERSION, time.strftime('%F %T')),
+            'type=%s' % FIXED['type'],
+            'server_type=%s' % stype,
+            'node_id=%s' % node_id,
+            'api=%s' % FIXED['api'],
+            'webapi_url=%s' % url,
+            'webapi_key=%s' % key,
+            'soga_key=%s' % key,
+            'check_interval=%s' % FIXED['check_interval'],
+            'submit_interval=%s' % FIXED['submit_interval'],
+            'log_level=%s' % FIXED['log_level']]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('\n'.join(body) + '\n', encoding='utf-8')
+    os.chmod(path, 0o600)
+    return path
 
 
-def cfg_save(d):
-    CFG.parent.mkdir(parents=True, exist_ok=True)
-    CFG.write_text('\n'.join('%s=%s' % (k, v) for k, v in d.items()) + '\n', encoding='utf-8')
+def preflight(ctx=None, need_bin=True):
+    c = ctx or cfg_load()
+    probs = []
+    if not is_root():
+        probs.append('需要 root 执行')
+    for tool in ('systemctl', 'journalctl', 'ss', 'curl', 'python3', 'openssl'):
+        if not shutil.which(tool):
+            probs.append('缺少命令 %s' % tool)
+    if not shutil.which('nft'):
+        probs.append('缺少 nft（闸门转发需要）')
+    if need_bin:
+        bd = Path(c['bin_dir'])
+        for n in ('soco', 'libsoco.so'):
+            if not (bd / n).is_file():
+                probs.append('缺二进制 %s（见 DEPLOY.md §2）' % (bd / n))
+    return probs
 
 
-def sh(cmd, timeout=120):
-    try:
-        p = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True,
-                           text=True, timeout=timeout)
-        return p.returncode, (p.stdout or '') + (p.stderr or '')
-    except subprocess.TimeoutExpired:
-        return 124, 'timeout: %s' % cmd
-    except FileNotFoundError as e:
-        return 127, str(e)
+def deploy(ctx, node_id, stype, url, key, name='main', yes=False, dry=False,
+           probe_after=True, in_wizard=False):
+    """幂等部署 / 修复。name='main' 部署主实例，其余部署 soco@<name> 实例。"""
+    n_steps = 7
+    main_inst = (name == 'main')
+    bd = Path(ctx['bin_dir'])
+    conf_path = Path(ctx['conf']) if main_inst else Path(ctx['inst_dir']) / ('%s.conf' % name)
+    svc = ctx['service'] if main_inst else '%s@%s' % (ctx['service'], name)
 
+    head('部署 %s  %s' % (name, '(dry-run)' if dry else ''))
+    kv('架构', arch())
+    kv('节点 ID', node_id)
+    kv('协议', stype)
+    kv('面板', url)
+    kv('配置', str(conf_path))
+    kv('单元', svc + '.service')
+    kv('密钥', key[:8] + '…' + key[-4:] + '  (自动生成，需填到面板同一串)')
 
-def out(cmd):
-    return sh(cmd)[1].strip()
+    i = 0
+    i += 1
+    step(i, n_steps, '环境预检', 'run')
+    probs = preflight(ctx, need_bin=True)
+    if probs:
+        step(i, n_steps, '环境预检', 'fail', '; '.join(probs))
+        return 2
+    step(i, n_steps, '环境预检', 'ok')
 
+    i += 1
+    step(i, n_steps, '目录与二进制', 'run')
+    if not dry:
+        for d in (bd, bd / 'licence', Path(ctx['inst_dir'])):
+            d.mkdir(parents=True, exist_ok=True)
+        os.chmod(bd / 'soco', 0o755)
+        os.chmod(bd / 'libsoco.so', 0o600)
+        pkg = Path(ctx['pkg'])
+        for src, dst, mode in ((pkg / '_ops' / 'probe_many.py', bd / 'probe_many.py', 0o755),
+                               (pkg / 'packaging' / 'soco-watchdog.py', bd / 'soco-watchdog.py', 0o755),
+                               (pkg / 'packaging' / 'routes-guard.py', bd / 'routes-guard.py', 0o755),
+                               (pkg / 'amd64' / 'src' / 'licence-sink.py', bd / 'licence' / 'sink.py', 0o755)):
+            if src.is_file():
+                shutil.copy2(src, dst)
+                os.chmod(dst, mode)
+    step(i, n_steps, '目录与二进制', 'ok', 'soco %s' % (out(['du', '-h', str(bd / 'soco')]).split('\t')[0] or ''))
 
-def read_hosts():
-    try:
-        return Path('/etc/hosts').read_text(errors='replace')
-    except OSError:
-        return ''
+    i += 1
+    step(i, n_steps, '写入配置（固定参数）', 'run')
+    if dry:
+        step(i, n_steps, '写入配置（固定参数）', 'skip', 'dry-run')
+    else:
+        if not main_inst and conf_path.exists():
+            warn('%s 已存在，将覆盖（原文件备份 .bak）' % conf_path)
+            shutil.copy2(conf_path, str(conf_path) + '.bak')
+        write_conf(conf_path, node_id, stype, url, key, name)
+        step(i, n_steps, '写入配置（固定参数）', 'ok', 'log_level=error')
 
+    i += 1
+    step(i, n_steps, '授权 sink + hosts + nft', 'run')
+    if dry:
+        step(i, n_steps, '授权 sink + hosts + nft', 'skip', 'dry-run')
+    else:
+        cert, keyf = bd / 'licence' / 'cert.pem', bd / 'licence' / 'key.pem'
+        if not (cert.is_file() and keyf.is_file()):
+            sh(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '3',
+                '-keyout', str(keyf), '-out', str(cert), '-subj', '/CN=%s' % LICENCE_HOSTS[0],
+                '-addext', 'subjectAltName=DNS:%s' % LICENCE_HOSTS[0]])
+            os.chmod(keyf, 0o600)
+        missing = [h for h in LICENCE_HOSTS if h not in read_hosts()]
+        if missing:
+            with Path('/etc/hosts').open('a') as f:
+                f.write(''.join('\n127.0.0.1 %s\n' % h for h in missing))
+        step(i, n_steps, '授权 sink + hosts + nft', 'ok',
+             'hosts +%d, sink 38443' % len(missing))
 
-def arch():
-    m = os.uname().machine if hasattr(os, 'uname') else ''
-    return 'arm64' if m in ('aarch64', 'arm64') else 'amd64'
+    i += 1
+    step(i, n_steps, 'systemd 单元', 'run')
+    if dry:
+        step(i, n_steps, 'systemd 单元', 'skip', 'dry-run')
+    else:
+        us = Path('/etc/systemd/system')
+        for uname, tpl in UNITS.items():
+            (us / uname).write_text(tpl.format(bin_dir=ctx['bin_dir'], inst_dir=ctx['inst_dir']),
+                                    encoding='utf-8')
+        sh(['systemctl', 'daemon-reload'])
+        sh(['systemctl', 'enable', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
+        sh(['systemctl', 'start', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
+        if main_inst:
+            sh(['systemctl', 'enable', 'soco-watchdog.service'])
+            sh(['systemctl', 'enable', svc + '.service'])
+            sh(['systemctl', 'restart', svc + '.service'])
+            sh(['systemctl', 'start', 'soco-watchdog.service'])
+        else:
+            sh(['systemctl', 'enable', svc + '.service'])
+            sh(['systemctl', 'restart', svc + '.service'])
+        cfg_save(ctx)
+        step(i, n_steps, 'systemd 单元', 'ok', '5 个单元 / daemon-reload')
 
+    i += 1
+    step(i, n_steps, '启动与状态', 'run')
+    if dry:
+        step(i, n_steps, '启动与状态', 'skip', 'dry-run')
+    else:
+        for _ in range(20):
+            time.sleep(1.5)
+            if svc_state(svc) == 'active' and out(['ss', '-lnt']):
+                break
+        st, rs = svc_props(svc, 'ActiveState', 'NRestarts')
+        pid = main_pid(svc)
+        port = port_of_service(svc)
+        if st == 'active':
+            step(i, n_steps, '启动与状态', 'ok', 'pid=%s restarts=%s port=%s'
+                 % (pid, rs, port or '-'))
+        else:
+            step(i, n_steps, '启动与状态', 'fail', st)
+            warn('看日志： so-console logs %s 120' % svc)
 
-def svc_state(name):
-    rc, s = sh(['systemctl', 'is-active', name])
-    return s.strip() or 'unknown'
+    i += 1
+    step(i, n_steps, '真实握手验证', 'run')
+    if dry or not probe_after:
+        step(i, n_steps, '真实握手验证', 'skip', 'dry-run' if dry else 'skipped')
+    else:
+        script = bd / 'probe_many.py'
+        if not script.is_file():
+            step(i, n_steps, '真实握手验证', 'fail', 'probe_many.py 缺失')
+        else:
+            rc, s = sh(['python3', script, '3', '1,2,3'], timeout=300)
+            line = [l for l in s.splitlines() if l.startswith('TOTAL')]
+            if rc == 0:
+                step(i, n_steps, '真实握手验证', 'ok', line[0] if line else '3/3')
+            else:
+                step(i, n_steps, '真实握手验证', 'fail', (line[0] if line else s.strip()[-60:]))
 
-
-def main_pid(svc):
-    return out(['systemctl', 'show', svc, '-p', 'MainPID', '--value'])
-
-
-def journal_has(svc, pattern, since='-5min'):
-    rc, s = sh(['journalctl', '-u', svc, '--since', since, '-o', 'cat'], timeout=90)
-    return sum(1 for ln in s.splitlines() if re.search(pattern, ln))
-
-
-def det_port(c):
-    if c['port']:
-        return c['port']
-    rc, s = sh(['ss', '-lntup'])
-    m = re.findall(r':(\d{4,5})\s', s)
-    conf = Path(c['conf'])
-    if conf.is_file():
-        t = conf.read_text(encoding='utf-8', errors='replace')
-        m2 = re.findall(r'^(?:listen|server_port)\s*=\s*(\d+)', t, re.M)
-        if m2:
-            return m2[0]
-    for p in m:
-        if p in ('49989', '49999'):
-            return p
-    return ''
-
-
-# ------------------------------------------------------------------ commands
-def cmd_paths(c, _a):
-    print('pkg        : %s' % c['pkg'])
-    print('bin_dir    : %s' % c['bin_dir'])
-    print('conf       : %s' % c['conf'])
-    print('instances  : %s/*.conf' % c['inst_dir'])
-    print('service    : %s.service' % c['service'])
-    print('console.cfg: %s' % CFG)
-    print('port       : %s' % (det_port(c) or '<unknown>'))
-    print('arch       : %s (host=%s)' % (c['arch'] or arch(), arch()))
+    head('完成')
+    kv('服务', '%s.service (%s)' % (svc, svc_state(svc)))
+    kv('配置', str(conf_path))
+    kv('面板', url)
+    kv('节点密钥', key)
+    kv('下一步', 'so-console status / probe 3 / doctor')
+    warn('把上面这串节点密钥填进面板的 webapi_key 与 soga_key（不一致会拉不到用户）')
     return 0
 
 
-def last_user_num(svc):
-    rc, s = sh(['journalctl', '-u', svc, '-n', '800', '-o', 'cat'])
-    nums = re.findall(r'current user num:\s*(\d+)', s)
-    return nums[-1] if nums else '-'
+def wizard_target(ctx):
+    """交互式收集：只有 id / 协议 / 面板 三项，其余固定。"""
+    head('安装向导  只填三项，其余固定')
+    node_id = ask('节点 ID', valid=r'\d+', hint='只能是数字')
+    say('  协议  1) Shadowsocks 2022   2) VLESS + REALITY')
+    pick = ask('选择', default='1', valid=r'[12]')
+    stype = PROTOS[pick][0]
+    url = ask('面板地址', default='https://', valid=r'https?://\S+',
+              hint='形如 https://panel.example.com')
+    url = url.rstrip('/')
+    say('')
+    kv('固定：type', '%s / api=%s' % (FIXED['type'], FIXED['api']))
+    kv('固定：间隔', 'pull/push %ss' % FIXED['check_interval'])
+    kv('固定：日志', 'log_level=%s（只记错误）' % FIXED['log_level'])
+    kv('固定：闸门', 'hosts + 本地 sink(38443) + nft dnat')
+    return node_id, stype, url
 
 
-def last_routes_line(svc):
-    rc, s = sh(['journalctl', '-u', svc, '-n', '800', '-o', 'cat'])
-    for ln in reversed(s.splitlines()):
-        if 'load routes config' in ln:
-            return ln.split('load routes config')[-1].strip()[:90]
-    return '-'
+# ══════════════════════════════════════════════════════════════ commands
+def cmd_install(c, a):
+    if getattr(a, 'node_id', None) and getattr(a, 'url', None):
+        node_id, stype, url = a.node_id, a.stype or 'ss', a.url.rstrip('/')
+    else:
+        node_id, stype, url = wizard_target(c)
+    key = getattr(a, 'webapi_key', None) or secrets.token_hex(16)
+    name = getattr(a, 'name', None) or 'main'
+    return deploy(c, node_id, stype, url, key, name=name, dry=getattr(a, 'dry_run', False),
+                  probe_after=not getattr(a, 'no_probe', False))
 
 
 def cmd_status(c, _a):
     svc = c['service']
+    head('状态总览  %s' % time.strftime('%F %T'))
     pid = main_pid(svc)
-    port = det_port(c)
-    listening = 'yes' if port and (':' + port) in out(['ss', '-lnt']) else 'no'
-    print('=== %s ===' % time.strftime('%F %T'))
-    print('arch        : %s' % (c['arch'] or arch()))
-    print('service     : %-10s pid=%-8s restarts=%s' % (
-        svc_state(svc), pid or '-',
-        out(['systemctl', 'show', svc, '-p', 'NRestarts', '--value']) or '-'))
+    port = port_of_service(svc) or det_port(c)
+    log = journal(svc, '-10min')
+    kv('架构', '%s (host=%s)' % (c['arch'] or arch(), arch()))
+    kv('主服务', '%s pid=%s restarts=%s' % (svc_state(svc), pid or '-',
+                                            out(['systemctl', 'show', svc, '-p', 'NRestarts', '--value'])))
     if pid and pid not in ('0', ''):
-        print('uptime/rss  : %s' % out(['ps', '-o', 'etime=,rss=,pcpu=', '-p', pid]))
-    print('port        : %s (%s)' % (port or '-', listening))
-    print('users(svc)  : %s' % last_user_num(svc))
+        kv('运行时长/内存/CPU', out(['ps', '-o', 'etime=,rss=,pcpu=', '-p', pid]))
+    kv('业务端口', '%s (%s)' % (port or '-', 'LISTEN' if port and ':' + port in out(['ss', '-lnt']) else 'DOWN'))
+    kv('用户（本地）', last_user_num(svc))
+    kv('闸门计数(10m)', 'key_err=%d auth_fail=%d relay=%d'
+       % (log.count('soga key'), log.count('auth failed'), log.count('tcp relay')))
+    kv('分流（只读）', last_routes_line(svc))
     for u in ('soco-licence-sink', 'soco-sink-redirect', 'soco-watchdog'):
-        print('%-20s %s' % (u, svc_state(u)))
-    print('gate(5m)    : key_err=%d auth_fail=%d relay=%d' % (
-        journal_has(svc, 'soga key'), journal_has(svc, 'auth failed'),
-        journal_has(svc, 'tcp relay')))
-    print('routes      : %s' % last_routes_line(svc))
-    print('instances   : %s' % (', '.join(p.stem for p in Path(c['inst_dir']).glob('*.conf')) or '-'))
+        kv(u, svc_state(u))
+    insts = sorted(p.stem for p in Path(c['inst_dir']).glob('*.conf') if p.stem != 'soga')
+    kv('实例', ', '.join(insts) or '-')
     binf = Path(c['bin_dir']) / 'soco'
-    print('bin hash    : %s' % (out(['sha256sum', str(binf)])[:16] if binf.is_file() else 'MISSING'))
-    return 0
-
-
-def cmd_install(c, a):
-    svc, bd, conf = c['service'], Path(c['bin_dir']), Path(c['conf'])
-    pkg = Path(a[0]) if a else Path(c['pkg'])
-    print('== install  arch=%s  pkg=%s' % (arch(), pkg))
-    if os.geteuid() != 0:
-        print('!! must run as root')
-        return 2
-    c['pkg'] = str(pkg)
-    for d in (bd, bd / 'licence', Path(c['inst_dir'])):
-        d.mkdir(parents=True, exist_ok=True)
-    # binaries must be provided by the operator (build script or backup)
-    for name in ('soco', 'libsoco.so'):
-        f = bd / name
-        if not f.is_file():
-            for cand in (pkg / 'bin' / name, pkg / 'amd64' / 'bin' / name, pkg / 'arm64' / 'bin' / name):
-                if cand.is_file():
-                    shutil.copy2(cand, f)
-                    break
-        if not f.is_file():
-            print('!! missing %s â€” put it in %s or %s/bin/ (see DEPLOY.md Â§2)' % (f, bd, pkg))
-            return 3
-    os.chmod(bd / 'soco', 0o755)
-    os.chmod(bd / 'libsoco.so', 0o600)
-    # probe client + scripts from the project dir
-    for src, dst in ((pkg / '_ops' / 'probe_many.py', bd / 'probe_many.py'),
-                     (pkg / 'packaging' / 'soco-watchdog.py', bd / 'soco-watchdog.py'),
-                     (pkg / 'packaging' / 'routes-guard.py', bd / 'routes-guard.py')):
-        if src.is_file():
-            shutil.copy2(src, dst)
-            os.chmod(dst, 0o755)
-    # licence sink + cert
-    sink = pkg / 'amd64' / 'src' / 'licence-sink.py'
-    if not (bd / 'licence' / 'sink.py').is_file() and sink.is_file():
-        shutil.copy2(sink, bd / 'licence' / 'sink.py')
-    if not (bd / 'licence' / 'cert.pem').is_file():
-        rc, s = sh(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '3',
-                    '-keyout', str(bd / 'licence' / 'key.pem'), '-out', str(bd / 'licence' / 'cert.pem'),
-                    '-subj', '/CN=%s' % LICENCE_HOSTS[0],
-                    '-addext', 'subjectAltName=DNS:%s' % LICENCE_HOSTS[0]])
-        print('   cert: %s' % ('ok' if rc == 0 else 'FAILED ' + s[:120]))
-    os.chmod(bd / 'licence' / 'key.pem', 0o600)
-    # gate bypass: hosts entries (idempotent)
-    hosts = Path('/etc/hosts')
-    txt = read_hosts()
-    add = [h for h in LICENCE_HOSTS if h not in txt]
-    if add:
-        with hosts.open('a') as f:
-            f.write(''.join('\n127.0.0.1 %s\n' % h for h in add))
-        print('   hosts: added %d entries' % len(add))
-    # systemd units
-    us = Path('/etc/systemd/system')
-    for name, tpl in UNITS.items():
-        (us / name).write_text(tpl.format(bin_dir=c['bin_dir'], inst_dir=c['inst_dir']), encoding='utf-8')
-    print('   units: %d written' % len(UNITS))
-    sh(['systemctl', 'daemon-reload'])
-    sh(['systemctl', 'enable', '--now', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
-    sh(['systemctl', 'enable', '--now', svc + '.service'])
-    if (bd / 'soco-watchdog.py').is_file():
-        sh(['systemctl', 'enable', '--now', 'soco-watchdog.service'])
-    cfg_save(c)
-    print('   console.conf written -> %s' % CFG)
-    time.sleep(6)
-    cmd_gate(c, [])
-    print('next: %s probe 3   (%s doctor)' % (sys.argv[0], sys.argv[0]))
+    kv('主程序', (out(['sha256sum', str(binf)])[:16] or '-') if binf.is_file() else 'MISSING')
     return 0
 
 
 def cmd_service(c, a):
-    act = a[0] if a else 'status'
+    act = getattr(a, 'action', None) or 'status'
     svc = c['service']
-    if act not in ('start', 'stop', 'restart', 'status'):
-        print('usage: service start|stop|restart|status')
-        return 2
-    if act != 'status':
-        for u in ('soco-licence-sink', 'soco-sink-redirect') if act != 'stop' else ():
-            sh(['systemctl', act, u])
-        rc, s = sh(['systemctl', act, svc + '.service'])
-        print(s.strip() or 'ok')
-    return cmd_status(c, [])
+    if act == 'status':
+        return cmd_status(c, a)
+    head('%s %s' % (act, svc))
+    if act != 'stop':
+        for u in ('soco-licence-sink', 'soco-sink-redirect'):
+            sh(['systemctl', 'start', u])
+    rc, s = sh(['systemctl', act, svc + '.service'])
+    ok(s.strip() or 'done')
+    time.sleep(2 if act != 'stop' else 1)
+    return cmd_status(c, a)
 
 
 def cmd_users(c, _a):
-    print('local peer count (svc log) : %s' % last_user_num(c['service']))
-    panel = Path(c['conf'])
-    if not panel.is_file():
-        print('panel users                : <no config>')
-        return 0
-    k = dict(l.split('=', 1) for l in panel.read_text().splitlines()
-             if '=' in l and not l.lstrip().startswith('#'))
-    url, nid, key = k.get('webapi_url', ''), k.get('node_id', ''), k.get('webapi_key', '')
+    head('用户数对照')
+    kv('本地（日志）', last_user_num(c['service']))
+    conf = Path(c['conf'])
+    if not conf.is_file():
+        warn('没有配置 %s' % conf)
+        return 1
+    url = key_of(conf, 'webapi_url')
+    nid = key_of(conf, 'node_id')
+    key = key_of(conf, 'webapi_key')
+    st = key_of(conf, 'server_type', 'vless')
+    nt = {'ss': 'shadowsocks', 'vless': 'vless', 'vmess': 'vmess'}.get(st, st)
     if not (url and nid and key):
-        print('panel users                : <webapi_url / node_id / webapi_key missing>')
-        return 0
-    nt = {'ss': 'shadowsocks', 'vless': 'vless', 'vmess': 'vmess'}.get(k.get('server_type', 'vless'), 'vless')
-    u = '%s/api/v1/server/UniProxy/user?node_id=%s&node_type=%s&token=%s' % (
-        url.rstrip('/'), nid, nt, key)
-    rc, s = sh(['curl', '-sS', '--max-time', '20', u])
+        warn('配置缺 webapi_url / node_id / webapi_key')
+        return 1
+    rc, s = sh(['curl', '-sS', '--max-time', '20', '%s/api/v1/server/UniProxy/user'
+                '?node_id=%s&node_type=%s&token=%s' % (url, nid, nt, key)])
     try:
-        print('panel users                : %d' % len(json.loads(s)['users']))
+        kv('面板（UniProxy）', '%d 个用户' % len(json.loads(s)['users']))
+        ok('对照一致' if last_user_num(c['service']) == str(len(json.loads(s)['users']))
+           else '本地与面板不一致 → so-console logs soco 80')
     except Exception:
-        print('panel users                : <fetch failed> %s' % s[:100].replace(key, '***'))
+        bad('面板接口失败：%s' % s[:100].replace(key, '***'))
+        return 1
     return 0
 
 
 def cmd_probe(c, a):
-    n = a[0] if a else '3'
-    idx = a[1] if len(a) > 1 else ''
-    script = Path(c['bin_dir']) / 'probe_many.py'
-    if not script.is_file():
-        print('!! %s missing (run `install` first)' % script)
+    script = probe_script(c)
+    if script is None:
+        bad('找不到 probe_many.py（先 so-console install，或放进 %s）' % c['bin_dir'])
         return 2
+    n = getattr(a, 'count', None) or '3'
     cmd = ['python3', '-u', str(script), 'all' if n in ('all', 'full') else str(n)]
-    if idx:
-        cmd.append(idx)
-    print('== probe (serial)  %s' % ' '.join(cmd[2:]))
+    if getattr(a, 'idx', None):
+        cmd.append(a.idx)
+    head('真实握手  %s' % ' '.join(cmd[2:]))
     t0 = time.time()
     rc, s = sh(cmd, timeout=7200)
-    print(s.rstrip())
-    print('== probe done rc=%d wall=%ds' % (rc, round(time.time() - t0)))
+    for ln in s.splitlines():
+        ln = ln.strip()
+        if ln.startswith('TOTAL'):
+            m = re.search(r'ok=(\d+)/(\d+)', ln)
+            if m and m.group(1) == m.group(2):
+                ok(ln)
+            else:
+                bad(ln)
+        elif 'FAIL' in ln:
+            bad(ln)
+    kv('退出码', rc)
+    kv('耗时', '%ds' % round(time.time() - t0))
     return 0 if rc == 0 else 1
 
 
 def cmd_gate(c, _a):
+    head('600 秒闸门自检')
     svc = c['service']
-    print('== 600s gate self-check')
-    hosts = read_hosts()
-    missing = [h for h in LICENCE_HOSTS if h not in hosts]
-    print('  hosts entries      : %s' % ('ok' if not missing else 'MISSING %s' % missing))
-    print('  sink service       : %s' % svc_state('soco-licence-sink'))
-    print('  sink listening     : %s' % ('ok' if ':38443' in out(['ss', '-lnt']) else 'NO'))
-    print('  nft redirect       : %s' % ('ok' if '38443' in out(['nft', 'list', 'ruleset']) else 'NO'))
-    print('  key errors 10m     : %d' % journal_has(svc, 'soga key', '-10min'))
+    hosts_ok = all(h in read_hosts() for h in LICENCE_HOSTS)
+    checks = [
+        ('hosts 4 条授权域名', hosts_ok),
+        ('sink 服务', svc_state('soco-licence-sink') == 'active'),
+        ('sink 监听 38443', ':38443' in out(['ss', '-lnt'])),
+        ('nft dnat 127.0.0.1:443', '38443' in out(['nft', 'list', 'ruleset'])),
+        ('10 分钟无 key 错误', journal(svc).count('soga key') == 0),
+    ]
+    for name, good in checks:
+        (ok if good else bad)(name)
     pid = main_pid(svc)
     if pid and pid != '0':
-        print('  uptime             : %s' % out(['ps', '-o', 'etime=', '-p', pid]))
-    ok = not missing and journal_has(svc, 'soga key', '-10min') == 0
-    print('  verdict            : %s' % ('PASS (gate suppressed)' if ok else 'FAIL â€” repair with `install`'))
-    return 0 if ok else 1
-
-
-ROUTES_AREAS = {
-    'us': ('node-us', '38383'), 'hk': ('node-hk', '38888'), 'tw': ('node-tw', '20558'),
-    'jp': ('node-jp', '38123'), 'kr': ('node-kr', '23355'), 'sg': ('node-sg', '20955'),
-    'uk': ('node-uk', '25253'),
-}
+        kv('已运行', out(['ps', '-o', 'etime=', '-p', pid]))
+    good = all(v for _, v in checks)
+    say('')
+    (ok if good else bad)('结论：%s' % ('闸门已被压制' if good else '闸门可能生效 → so-console install 修复'))
+    return 0 if good else 1
 
 
 def cmd_routes(c, a):
-    svc = c['service']
+    """只读：分流由其它程序负责，这里只看。"""
     rp = Path(c['inst_dir']) / 'routes.toml'
-    act = a[0] if a else 'list'
-    if act == 'list':
-        if not rp.is_file():
-            print('no routes file (%s)' % rp)
-            return 1
-        t = rp.read_text(errors='replace')
-        print('file   : %s (%d bytes)' % (rp, len(t)))
-        print('rules  : %d' % len(re.findall(r'^\[\[routes\]\]', t, re.M)))
-        m = re.search(r'\[\[routes\.Outs\]\][^\[]*', t, re.S)
-        if m:
-            srv = re.search(r'server\s*=\s*"([^"]+)"', m.group(0))
-            port = re.search(r'port\s*=\s*(\d+)', m.group(0))
-            print('first  : %s:%s' % (srv.group(1) if srv else '?', port.group(1) if port else '?'))
-        print('loaded : %s' % last_routes_line(svc))
-        return 0
-    if act == 'switch':
-        area = (a[1] if len(a) > 1 else 'us').lower()
-        if area not in ROUTES_AREAS:
-            print('areas: %s' % ', '.join(ROUTES_AREAS))
-            return 2
-        if not rp.is_file():
-            print('no routes file')
-            return 1
-        srv, port = ROUTES_AREAS[area]
-        shutil.copy2(rp, str(rp) + '.bak.%s' % time.strftime('%Y%m%dT%H%M%S'))
-        t = rp.read_text(errors='replace')
-        i = t.find('[[routes.Outs]]')
-        j = t.find('[[routes]]', i)
-        seg = t[i:j if j > 0 else len(t)]
-        new = re.sub(r'server\s*=\s*"[^"]*"', 'server="%s"' % srv, seg, count=1)
-        new = re.sub(r'port\s*=\s*\d+', 'port=%s' % port, new, count=1)
-        rp.write_text(t[:i] + new + t[j if j > 0 else len(t):])
-        os.utime(rp)
-        time.sleep(3)
-        print('switched first Outs -> %s:%s' % (srv, port))
-        return cmd_routes(c, ['list'])
+    act = getattr(a, 'action', None) or 'status'
+    head('流媒体分流（只读）')
+    if not rp.is_file():
+        warn('没有 %s（分流交给其它程序时属正常）' % rp)
+        return 1
     if act == 'validate':
-        if not rp.is_file():
-            print('no routes file')
-            return 1
-        rc, s = sh(['python3', '-c',
-                    'import sys,tomllib;d=tomllib.load(open(sys.argv[1],"rb"));'
-                    'print("toml ok routes=%d" % len(d.get("routes",[])))', str(rp)])
-        print(s.strip() or 'invalid')
+        rc, s = sh(['python3', '-c', 'import sys,tomllib;d=tomllib.load(open(sys.argv[1],"rb"));'
+                    'print("rules=%d" % len(d.get("routes",[])))', str(rp)])
+        (ok if rc == 0 else bad)(s.strip() or 'invalid')
         return rc
-    print('usage: routes list|switch <us|hk|tw|jp|kr|sg|uk>|validate')
-    return 2
+    t = rp.read_text(errors='replace')
+    kv('文件', str(rp))
+    kv('规则数', len(re.findall(r'^\[\[routes\]\]', t, re.M)))
+    m = re.search(r'\[\[routes\.Outs\]\][^\[]*', t, re.S)
+    if m:
+        srv = re.search(r'server\s*=\s*"([^"]+)"', m.group(0))
+        prt = re.search(r'port\s*=\s*(\d+)', m.group(0))
+        kv('首个出站', '%s:%s' % (srv.group(1) if srv else '?', prt.group(1) if prt else '?'))
+    kv('加载状态', last_routes_line(c['service']))
+    if act in ('show', 'list'):
+        for i, ln in enumerate(t.splitlines()):
+            if re.match(r'^\s*(name|pattern|server|port|protocol)\s*=', ln) and i < 400:
+                print('   ' + col(D, ln.strip()[:100]))
+    kv('提示', '本控制台只读；改写由 nfu / 其它程序 + routes-guard 负责')
+    return 0
+
+
+def inst_service(c, name):
+    return '%s@%s' % (c['service'], name)
 
 
 def cmd_inst(c, a):
-    act = a[0] if a else 'list'
+    act = getattr(a, 'action', None) or 'list'
     d = Path(c['inst_dir'])
     if act == 'list':
+        head('多机场实例')
+        rows = []
         for p in sorted(d.glob('*.conf')):
-            name = p.stem
-            print('%-12s %-10s %s' % (name, svc_state('soco@%s' % name),
-                                      out(['systemctl', 'show', 'soco@%s' % name, '-p', 'NRestarts', '--value']) or '-'))
-        return 0
-    if act == 'new':
-        if len(a) < 2:
-            print('usage: inst new <name> [node_id=N] [webapi_url=U] [webapi_key=K] [soga_key=K]')
-            return 2
-        name = a[1]
-        dst = d / ('%s.conf' % name)
-        if dst.exists():
-            print('exists: %s' % dst)
-            return 1
-        t = Path(c['conf']).read_text()
-        for kv in a[2:]:
-            if '=' not in kv:
+            n = p.stem
+            if n == 'soga':
                 continue
-            k, v = kv.split('=', 1)
-            t = re.sub(r'(?m)^%s\s*=.*$' % re.escape(k), '%s=%s' % (k, v), t) \
-                if re.search(r'(?m)^%s\s*=' % re.escape(k), t) else t + '\n%s=%s\n' % (k, v)
-        shutil.copy2(Path(c['conf']), dst)
-        dst.write_text(t)
-        os.chmod(dst, 0o600)
-        print('created %s' % dst)
-        return cmd_inst(c, ['list'])
-    if act in ('start', 'stop', 'restart', 'log'):
-        if len(a) < 2:
-            print('usage: inst %s <name>' % act)
-            return 2
-        name = a[1]
+            sv = inst_service(c, n)
+            rows.append([n, key_of(p, 'node_id', '-'), key_of(p, 'server_type', '-'),
+                         svc_state(sv), out(['systemctl', 'show', sv, '-p', 'NRestarts', '--value']) or '-'])
+        if rows:
+            table(rows, ['实例', '节点ID', '协议', '状态', '重启'])
+        else:
+            warn('还没有实例，用  so-console inst new')
+        return 0
+    if act in ('new', 'deploy'):
+        head('新增实例')
+        name = getattr(a, 'name', None) or ask('实例名', valid=r'[a-z0-9_]{2,16}', hint='小写字母/数字/_')
+        if (d / ('%s.conf' % name)).exists():
+            bad('实例 %s 已存在（先 inst remove 或换名字）' % name)
+            return 1
+        if getattr(a, 'node_id', None) and getattr(a, 'url', None):
+            node_id, stype, url = a.node_id, getattr(a, 'stype', None) or 'ss', a.url.rstrip('/')
+        else:
+            node_id, stype, url = wizard_target(c)
+        key = getattr(a, 'webapi_key', None) or secrets.token_hex(16)
+        return deploy(c, node_id, stype, url, key, name=name, dry=getattr(a, 'dry_run', False),
+                      probe_after=not getattr(a, 'no_probe', False))
+    if act in ('start', 'stop', 'restart', 'log', 'remove', 'enable', 'disable'):
+        name = getattr(a, 'name', None) or ask('实例名', valid=r'[a-z0-9_]{2,16}')
+        sv = inst_service(c, name)
         if act == 'log':
-            rc, s = sh(['journalctl', '-u', 'soco@%s' % name, '-n', '60', '-o', 'cat'])
-            print(s.rstrip())
+            head('实例日志 %s' % name)
+            say(sh(['journalctl', '-u', sv, '-n', '80', '-o', 'cat'])[1].rstrip())
             return 0
-        sh(['systemctl', act, 'soco@%s' % name])
-        return cmd_inst(c, ['list'])
-    if act == 'remove':
-        if len(a) < 2:
-            print('usage: inst remove <name>')
-            return 2
-        name = a[1]
-        sh(['systemctl', 'disable', '--now', 'soco@%s' % name])
-        (d / ('%s.conf' % name)).unlink(missing_ok=True)
-        print('removed %s' % name)
-        return cmd_inst(c, ['list'])
-    print('usage: inst list|new|start|stop|restart|log|remove')
+        if act == 'remove':
+            if not confirm('确认删除实例 %s（停服 + 删配置）？' % name):
+                return 0
+            sh(['systemctl', 'disable', '--now', sv])
+            (d / ('%s.conf' % name)).unlink(missing_ok=True)
+            ok('已删除 %s' % name)
+        else:
+            sh(['systemctl', act, sv])
+            ok('%s %s → %s' % (act, name, svc_state(sv)))
+        return cmd_inst(c, argparse.Namespace(action='list'))
+    bad('用法：inst list|new|start|stop|restart|log|remove')
     return 2
 
 
 def cmd_logs(c, a):
-    unit = a[0] if a else c['service']
-    n = a[1] if len(a) > 1 else '80'
-    rc, s = sh(['journalctl', '-u', unit, '-n', str(n), '-o', 'cat'])
-    print(s.rstrip())
-    return rc
+    unit = getattr(a, 'unit', None) or c['service']
+    n = str(getattr(a, 'lines', None) or 100)
+    head('日志 %s（最后 %s 行）' % (unit, n))
+    say(sh(['journalctl', '-u', unit, '-n', n, '-o', 'cat'])[1].rstrip() or '(空)')
+    return 0
 
 
 def cmd_backup(c, _a):
+    head('备份')
     ts = time.strftime('%Y%m%d-%H%M%S')
     dst = Path('/root/so-backup-%s.tar.gz' % ts)
     with tarfile.open(dst, 'w:gz') as t:
         for p in (c['bin_dir'], c['inst_dir']):
             if Path(p).exists():
                 t.add(p)
-    print('backup -> %s (%d KB)' % (dst, dst.stat().st_size // 1024))
+    ok('%s（%d KB）' % (dst, dst.stat().st_size // 1024))
     return 0
 
 
 def cmd_rollback(c, a):
+    head('回滚')
     cands = sorted(Path('/root').glob('so-backup-*.tar.gz'))
     if not cands:
-        print('no backups in /root')
+        bad('没有备份')
         return 1
-    if a:
-        pick = Path(a[0])
+    pick = None
+    if getattr(a, 'file', None):
+        pick = Path(a.file)
     else:
-        for i, p in enumerate(cands, 1):
-            print('%2d) %s' % (i, p))
-        sel = input('restore which # (empty=abort): ').strip()
+        rows = [[i + 1, p.name, '%d KB' % (p.stat().st_size // 1024)] for i, p in enumerate(cands)]
+        table(rows, ['#', '备份', '大小'])
+        sel = ask('选择 #（回车取消）', default='', valid=r'\d*')
         if not sel:
             return 0
         pick = cands[int(sel) - 1]
     sh(['systemctl', 'stop', c['service']])
     with tarfile.open(pick, 'r:gz') as t:
-        t.extractall('/')
+        try:
+            t.extractall('/', filter='data')
+        except TypeError:                     # python < 3.12
+            t.extractall('/')
     sh(['systemctl', 'start', c['service']])
-    print('restored %s' % pick)
-    return cmd_status(c, [])
+    ok('已恢复 %s' % pick.name)
+    return cmd_status(c, a)
 
 
 def cmd_verify(c, _a):
+    head('指纹与接线')
     bd = Path(c['bin_dir'])
-    print('== fingerprints')
-    for n in ('soco', 'libsoco.so'):
+    ps = probe_script(c)
+    for n in ('soco', 'libsoco.so', 'soco-watchdog.py'):
         f = bd / n
-        print('  %-12s %s' % (n, out(['sha256sum', str(f)])[:16] if f.is_file() else 'MISSING'))
-    if (bd / 'soco').is_file():
-        print('  file magic  %s' % out(['file', '-b', str(bd / 'soco')])[:60])
-    print('== unit wiring')
+        if f.is_file():
+            h = out(['sha256sum', str(f)])[:16]
+            kv(n, '%s  %s' % (h, out(['du', '-h', str(f)]).split('\t')[0]))
+        else:
+            bad('%s 缺失' % n)
+    (ok if ps else bad)('握手探测脚本 %s' % (str(ps) if ps else '缺失（so-console install）'))
     u = Path('/etc/systemd/system/%s.service' % c['service'])
     if u.is_file():
         for ln in u.read_text().splitlines():
             if ln.startswith(('ExecStart', 'Environment')):
-                print('  ' + ln)
-    print('== adapter loaded')
+                kv('unit', ln[:60])
     pid = main_pid(c['service'])
-    print('  %s' % ('yes' if pid and 'libsoco' in out(['cat', '/proc/%s/maps' % pid]) else 'NO â€” LD_PRELOAD missing or .so unreadable'))
+    loaded = pid not in ('', '0') and 'libsoco' in out(['cat', '/proc/%s/maps' % pid])
+    (ok if loaded else bad)('适配层（LD_PRELOAD libsoco.so）%s' % ('已加载' if loaded else '未加载'))
     return 0
 
 
 def cmd_doctor(c, _a):
-    rows = []
-
-    def chk(name, ok, hint=''):
-        rows.append((name, bool(ok), hint))
-
+    head('全量自检')
     bd = Path(c['bin_dir'])
-    chk('binaries present', (bd / 'soco').is_file() and (bd / 'libsoco.so').is_file(), 'run install')
-    chk('config present', Path(c['conf']).is_file(), 'place the node config at %s' % c['conf'])
-    chk('service active', svc_state(c['service']) == 'active', 'service start')
-    chk('port listening', bool(det_port(c)) and (':' + det_port(c)) in out(['ss', '-lnt']), 'check config listen port')
-    chk('sink active', svc_state('soco-licence-sink') == 'active', 'install')
-    chk('sink port 38443', ':38443' in out(['ss', '-lnt']), 'install')
-    chk('nft redirect', '38443' in out(['nft', 'list', 'ruleset']), 'install')
-    chk('hosts licence entries', all(h in read_hosts() for h in LICENCE_HOSTS), 'install')
-    chk('no key errors 10m', journal_has(c['service'], 'soga key', '-10min') == 0, 'gate self-check')
-    chk('no auth failures 10m', journal_has(c['service'], 'auth failed', '-10min') == 0, 'check panel keys')
-    chk('adapter loaded', 'libsoco' in out(['cat', '/proc/%s/maps' % (main_pid(c['service']) or '0')]), 'install')
-    w = 0
-    for name, ok, hint in rows:
-        print('  [%s] %-26s %s' % ('PASS' if ok else 'FAIL', name, '' if ok else hint))
-        w += 0 if ok else 1
-    print('verdict: %s' % ('ALL PASS' if w == 0 else '%d problem(s) â€” see hints' % w))
-    return 0 if w == 0 else 1
+    rows = [
+        ('二进制 soco', (bd / 'soco').is_file(), '按 DEPLOY §2 放置'),
+        ('适配层 libsoco.so', (bd / 'libsoco.so').is_file(), '同上'),
+        ('节点配置', Path(c['conf']).is_file(), 'so-console install'),
+        ('配置 log_level=error', key_of(c['conf'], 'log_level') == 'error', 'so-console install'),
+        ('主服务 active', svc_state(c['service']) == 'active', 'so-console service start'),
+        ('业务端口监听', bool(det_port(c)) and ':' + det_port(c) in out(['ss', '-lnt']), '看配置/日志'),
+        ('sink active', svc_state('soco-licence-sink') == 'active', 'so-console install'),
+        ('sink 38443', ':38443' in out(['ss', '-lnt']), 'so-console install'),
+        ('nft dnat', '38443' in out(['nft', 'list', 'ruleset']), 'so-console install'),
+        ('hosts 授权域名', all(h in read_hosts() for h in LICENCE_HOSTS), 'so-console install'),
+        ('10 分钟无 key 错误', journal(c['service']).count('soga key') == 0, 'so-console gate'),
+        ('10 分钟无认证失败', journal(c['service']).count('auth failed') == 0, '查面板 key'),
+        ('适配层已加载', 'libsoco' in out(['cat', '/proc/%s/maps' % (main_pid(c['service']) or '0')]),
+         'so-console install'),
+        ('面板可达', 'access address' in journal(c['service'], '-10min'), '查网络/面板'),
+    ]
+    fails = 0
+    for name, good, hint in rows:
+        print('  %s %-26s %s' % (col(G, '✔') if good else col(R, '✘'), name, '' if good else col(D, hint)))
+        fails += 0 if good else 1
+    say('')
+    (ok if not fails else bad)('结论：%s' % ('全部通过' if not fails else '%d 项需要处理' % fails))
+    return 0 if not fails else 1
 
 
-# ------------------------------------------------------------------ console
+def cmd_paths(c, _a):
+    head('真实路径')
+    for k in ('pkg', 'bin_dir', 'conf', 'inst_dir'):
+        kv(k, c[k])
+    kv('console.conf', str(CFG))
+    kv('业务端口', det_port(c) or '-')
+    kv('架构', c['arch'] or arch())
+    return 0
+
+
+# ══════════════════════════════════════════════════════════════ menu
 MENU = [
-    ('1', 'status', 'çŠ¶æ€æ€»è§ˆï¼ˆæœåŠ¡/ç«¯å£/äººæ•°/é—¸é—¨/routesï¼‰'),
-    ('2', 'install', 'å®‰è£…æˆ–ä¿®å¤ï¼ˆç›®å½•/è¯ä¹¦/hosts/nft/systemdï¼‰'),
-    ('3', 'service', 'å¯åŠ¨ / åœæ­¢ / é‡å¯'),
-    ('4', 'users', 'æœ¬åœ°ä¸Žé¢æ¿ç”¨æˆ·æ•°å¯¹ç…§'),
-    ('5', 'probe', 'çœŸå®žæ¡æ‰‹æµ‹è¯•ï¼ˆ3 / 497 / allï¼‰'),
-    ('6', 'gate', '600 ç§’é—¸é—¨è‡ªæ£€'),
-    ('7', 'routes', 'æµåª’ä½“åˆ†æµï¼šlist / switch <åœ°åŒº> / validate'),
-    ('8', 'inst', 'å¤šå®žä¾‹ï¼šlist / new / start / stop / log / remove'),
-    ('9', 'logs', 'çœ‹æ—¥å¿—ï¼ˆunit [è¡Œæ•°]ï¼‰'),
-    ('10', 'backup', 'å¤‡ä»½ /usr/local/soco + é…ç½®'),
-    ('11', 'rollback', 'ä»Žå¤‡ä»½å›žæ»š'),
-    ('12', 'verify', 'æŒ‡çº¹ä¸Žé€‚é…å±‚æ£€æŸ¥'),
-    ('13', 'doctor', 'å…¨é‡è‡ªæ£€ï¼ˆé€é¡¹ PASS/FAILï¼‰'),
-    ('14', 'paths', 'æ˜¾ç¤ºçœŸå®žè·¯å¾„ï¼ˆé…ç½®/äºŒè¿›åˆ¶/å®žä¾‹ï¼‰'),
+    ('deploy', [
+        ('1', 'install', '部署 / 修复本机节点（向导：只填 ID、协议、面板）'),
+        ('2', 'inst', '多机场：部署 / 查看 / 启停 / 删除实例'),
+    ]),
+    ('运维', [
+        ('3', 'status', '状态总览（服务 / 端口 / 人数 / 闸门 / 分流）'),
+        ('4', 'service', '启动 / 停止 / 重启'),
+        ('5', 'logs', '日志（默认主服务，只记错误）'),
+        ('6', 'users', '本地 vs 面板用户数'),
+    ]),
+    ('验证', [
+        ('7', 'probe', '真实握手（3 / N / all）'),
+        ('8', 'gate', '600 秒闸门自检'),
+        ('9', 'doctor', '全量自检'),
+        ('10', 'verify', '指纹 / 适配层 / 单元'),
+    ]),
+    ('数据', [
+        ('11', 'routes', '流媒体分流（只读查看）'),
+        ('12', 'backup', '备份（二进制 + 配置）'),
+        ('13', 'rollback', '从备份回滚'),
+        ('14', 'paths', '真实路径'),
+    ]),
 ]
-
-
-def run_cmd(c, name, args):
-    fn = globals().get('cmd_' + name)
-    if not fn:
-        print('unknown command: %s' % name)
-        return 2
-    return fn(c, args)
 
 
 def interactive(c):
     while True:
-        print('\n' + '=' * 58)
-        print(' so-console Â· %s Â· %s' % (c['arch'] or arch(), time.strftime('%F %T')))
-        print('=' * 58)
-        for k, name, desc in MENU:
-            print('%3s) %-9s %s' % (k, name, desc))
-        print('   0) é€€å‡º')
+        print()
+        print(col(B, '╭' + '─' * 61))
+        print(col(B, '│ so-console %s   %-12s %-22s' % (VERSION, c['arch'] or arch(),
+                                                       time.strftime('%F %T'))))
+        print(col(B, '╰' + '─' * 61))
+        for group, items in MENU:
+            print('  ' + col(D, '── %s %s' % (group, '─' * (38 - len(group)))))
+            for num, name, desc in items:
+                print('   %s %s %s' % (col(B, num.rjust(2)), col(B, name.ljust(9)), desc))
+        print('    0 %s %s' % (col(B, 'quit'.ljust(9)), '退出'))
         try:
-            sel = input('so> ').strip()
+            sel = input('\n  so> ').strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
         if sel in ('0', 'q', 'quit', 'exit'):
             return 0
-        hit = [m for m in MENU if m[0] == sel]
-        if not hit:
-            # allow typing a command directly:  probe 497 / routes switch tw
-            parts = sel.split()
-            if parts:
-                run_cmd(c, parts[0], parts[1:])
+        if not sel:
             continue
-        name = hit[0][1]
-        extra = []
-        if name in ('service', 'probe', 'routes', 'inst', 'logs', 'rollback'):
-            try:
-                extra = input('  args for %s (blank=default): ' % name).split()
-            except EOFError:
-                extra = []
-        run_cmd(c, name, extra)
+        name = None
+        for _, items in MENU:
+            for num, cmd_name, _desc in items:
+                if sel == num:
+                    name = cmd_name
+        if name is None:
+            parts = sel.split()
+            name = parts[0] if parts else ''
+            argv = parts[1:]
+        else:
+            argv = []
+        if name in ('install', 'inst', 'service', 'probe', 'logs', 'routes', 'rollback'):
+            extra = input('  %s 参数（回车 = 交互/默认）: ' % name).split()
+            argv = argv + extra
+        dispatch(c, name, argv)
 
 
-USAGE = """so-console â€” å•æ–‡ä»¶æŽ§åˆ¶å°ï¼ˆamd64 / arm64 é€šç”¨ï¼‰
+# ══════════════════════════════════════════════════════════════ cli
+def build_parser():
+    p = argparse.ArgumentParser(prog='so-console', add_help=False, description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest='cmd')
 
-  so-console                      äº¤äº’èœå•
-  so-console status               çŠ¶æ€æ€»è§ˆ
-  so-console install [pkg_dir]    å®‰è£…/ä¿®å¤ï¼ˆé»˜è®¤ /root/soï¼‰
-  so-console service start|stop|restart|status
-  so-console users                æœ¬åœ° vs é¢æ¿ç”¨æˆ·æ•°
-  so-console probe 3|497|all      çœŸå®žæ¡æ‰‹ï¼ˆä¸²è¡Œï¼‰
-  so-console gate                 600s é—¸é—¨è‡ªæ£€
-  so-console routes list|switch tw|validate
-  so-console inst list|new jp1 node_id=.. |start|stop|log|remove
-  so-console logs soco 100
-  so-console backup | rollback [file]
-  so-console verify | doctor | paths
-"""
+    pi = sub.add_parser('install', add_help=False)
+    pi.add_argument('--node-id')
+    pi.add_argument('--type', dest='stype', choices=['ss', 'vless'])
+    pi.add_argument('--url')
+    pi.add_argument('--webapi-key')
+    pi.add_argument('--name', default='main')
+    pi.add_argument('--dry-run', action='store_true')
+    pi.add_argument('--no-probe', action='store_true')
+
+    pn = sub.add_parser('inst', add_help=False)
+    pn.add_argument('action', nargs='?', default='list')
+    pn.add_argument('name', nargs='?')
+    pn.add_argument('--node-id')
+    pn.add_argument('--type', dest='stype', choices=['ss', 'vless'])
+    pn.add_argument('--url')
+    pn.add_argument('--webapi-key')
+    pn.add_argument('--dry-run', action='store_true')
+    pn.add_argument('--no-probe', action='store_true')
+
+    ps = sub.add_parser('service', add_help=False)
+    ps.add_argument('action', nargs='?', default='status',
+                    choices=['start', 'stop', 'restart', 'status'])
+
+    pp = sub.add_parser('probe', add_help=False)
+    pp.add_argument('count', nargs='?', default='3')
+    pp.add_argument('idx', nargs='?')
+
+    pl = sub.add_parser('logs', add_help=False)
+    pl.add_argument('unit', nargs='?')
+    pl.add_argument('lines', nargs='?', type=int)
+
+    pr = sub.add_parser('routes', add_help=False)
+    pr.add_argument('action', nargs='?', default='status', choices=['status', 'show', 'validate'])
+
+    pb = sub.add_parser('rollback', add_help=False)
+    pb.add_argument('file', nargs='?')
+
+    for name in ('status', 'users', 'gate', 'doctor', 'verify', 'backup', 'paths', 'help'):
+        sub.add_parser(name, add_help=False)
+    return p
+
+
+USAGE = """so-console %s · 一键部署与运维控制台
+
+  交互：  so-console
+  部署：  so-console install --node-id 12 --type ss --url https://panel.example.com
+  修复：  so-console install                 （无参数 = 向导，等同重装/修复）
+  多机场：so-console inst new jp1 --node-id 13 --type vless --url https://panel2 --webapi-key K
+  日常：  status / service restart / logs / users
+  验证：  probe 3 | probe all | gate | doctor | verify
+  只读：  routes status | routes validate        （分流由其它程序负责）
+  数据：  backup | rollback | paths
+
+客户只填：节点 ID、协议（ss/vless）、面板地址；密钥自动生成；其余参数固定。
+""" % VERSION
+
+
+CMDS = {
+    'install': cmd_install, 'status': cmd_status, 'service': cmd_service,
+    'users': cmd_users, 'probe': cmd_probe, 'gate': cmd_gate, 'routes': cmd_routes,
+    'inst': cmd_inst, 'logs': cmd_logs, 'backup': cmd_backup, 'rollback': cmd_rollback,
+    'verify': cmd_verify, 'doctor': cmd_doctor, 'paths': cmd_paths,
+}
+
+
+def dispatch(c, name, argv):
+    if name in ('help', '-h', '--help', ''):
+        print(USAGE)
+        return 0
+    fn = CMDS.get(name)
+    if not fn:
+        bad('未知命令：%s（so-console help）' % name)
+        return 2
+    parser = build_parser()
+    try:
+        args = parser.parse_args([name] + list(argv))
+    except SystemExit:
+        return 2
+    return fn(c, args)
 
 
 def main():
@@ -659,11 +1039,7 @@ def main():
         c['arch'] = arch()
     if len(sys.argv) == 1:
         return interactive(c)
-    name = sys.argv[1]
-    if name in ('-h', '--help', 'help'):
-        print(USAGE)
-        return 0
-    return run_cmd(c, name, sys.argv[2:])
+    return dispatch(c, sys.argv[1], sys.argv[2:])
 
 
 if __name__ == '__main__':

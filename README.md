@@ -26,38 +26,48 @@
 # ① 把整个项目上传到服务器（只传项目，不要传任何本地备份/私钥）
 scp -r ./soco root@<你的服务器>:/root/so
 
-# ② 一条命令安装（自动：目录/证书/hosts/nft/systemd + 闸门自检）
-/root/so/console/so-console install /root/so
+# ② 安装：向导只问三项（节点 ID / 协议 / 面板地址），其余全固定
+/root/so/console/so-console install
 
 # ③ 验证（3 个用户真实握手 → 全量自检）
 /root/so/console/so-console probe 3
 /root/so/console/so-console doctor
 ```
 
-不带参数运行 `so-console` 就是**交互控制台**：
+**谁填什么**：客户只填 **节点 ID、协议（`ss`/`vless`）、面板地址**；节点密钥由控制台**随机生成**（结果里打印，同一串填进面板）；
+`type/api/间隔/端口/日志` 全部固定 —— 日志固定 `log_level=error`，**只记错误**。
+一行搞定也行：`so-console install --node-id 12 --type ss --url https://panel.example.com`。
+
+不带参数运行 `so-console` 就是**交互控制台**（分组菜单，也可以直接敲命令）：
 
 ```
- so-console · amd64 · 2026-01-01 12:00:00
-==========================================================
-  1) status    状态总览（服务/端口/人数/闸门/routes）
-  2) install   安装或修复（目录/证书/hosts/nft/systemd）
-  3) service   启动 / 停止 / 重启
-  4) users     本地与面板用户数对照
-  5) probe     真实握手测试（3 / 497 / all）
-  6) gate      600 秒闸门自检
-  7) routes    流媒体分流：list / switch <地区> / validate
-  8) inst      多实例：list / new / start / stop / log / remove
-  9) logs      看日志（unit [行数]）
- 10) backup    备份 /usr/local/soco + 配置
- 11) rollback  从备份回滚
- 12) verify    指纹与适配层检查
- 13) doctor    全量自检（逐项 PASS/FAIL）
- 14) paths     显示真实路径（配置/二进制/实例）
-  0) 退出
+╭─────────────────────────────────────────────────────────────
+│ so-console 2.0   amd64          2026-01-01 12:00:00
+╰─────────────────────────────────────────────────────────────
+  ── 部署 ─────────────────────────────
+   1 install   部署 / 修复本机节点（向导：只填 ID、协议、面板）
+   2 inst      多机场：部署 / 查看 / 启停 / 删除实例
+  ── 运维 ─────────────────────────────
+   3 status    状态总览（服务 / 端口 / 人数 / 闸门 / 分流）
+   4 service   启动 / 停止 / 重启
+   5 logs      日志（默认主服务，只记错误）
+   6 users     本地 vs 面板用户数
+  ── 验证 ─────────────────────────────
+   7 probe     真实握手（3 / N / all）
+   8 gate      600 秒闸门自检
+   9 doctor    全量自检
+  10 verify    指纹 / 适配层 / 单元
+  ── 数据 ─────────────────────────────
+  11 routes    流媒体分流（只读查看）
+  12 backup    备份（二进制 + 配置）
+  13 rollback  从备份回滚
+  14 paths     真实路径
+    0 quit     退出
 so> 
 ```
 
-也可以直接敲命令，脚本/自动化同样适用：`so-console status`、`so-console probe 497`、`so-console routes switch tw`。
+脚本化同样适用：`so-console status`、`so-console probe all`、`so-console inst new jp1 --node-id 21 --type vless --url https://p2`。
+**分流不由本控制台改写**：流媒体交给其它程序，`routes` 只做只读查看与 TOML 校验。
 
 ---
 

@@ -80,48 +80,76 @@ scp -r ./soco root@<SERVER_IP>:/root/so
 
 1. 面板 → 服务器 → 新建节点（区域随便，名字有意义即可）；
 2. 协议选 `Shadowsocks 2022`（amd64）或 `VLESS + REALITY`（arm64）；
-3. 记下三件套：`<NODE_ID>`、`<WEBAPI_KEY>`、`<so**_KEY>`；
+3. 记下 **节点 ID**（`<NODE_ID>`）——这是客户需要在安装向导里填的三项之一；
 4. 业务端口、REALITY 的 `public_key / short_id / server_name`、SS2022 的 `server_key / cipher` **都由面板下发**，
-   节点侧不写死——你只要把 webapi 三件套填进配置文件即可；
+   节点侧不写死；
 5. 把用户/套餐挂到这个节点上（用户数在面板上调，节点侧每 60 s 拉一次）。
 
-节点配置文件（真实路径用 `so-console paths` 看，通常是 `/etc/so**/so**.conf`）：
+**节点密钥由控制台自动生成**（32 位随机 hex），安装完成后把它填回面板的 `webapi_key` 与 `so**_key`（两边必须一致，否则拉不到用户）。
+如果面板已经给了一对 key，安装时用 `--webapi-key <串>` 覆盖即可，不用改配置。
 
-```ini
-type=xboard
-server_type=ss            # arm64 写 vless
-node_id=<NODE_ID>
-api=webapi
-webapi_url=<PANEL_URL>
-webapi_key=<WEBAPI_KEY>
-so**_key=<so**_KEY>
-check_interval=60
-submit_interval=60
-log_level=info
-```
-
-```bash
-install -d -m 700 /etc/so**
-install -m 600 so**.conf /etc/so**/so**.conf    # 文件名按你机器的实际路径来
-```
+> 配置文件由控制台写（`0600`），内容固定：
+>
+> ```ini
+> type=xboard            # 固定
+> api=webapi             # 固定
+> check_interval=60      # 固定
+> submit_interval=60     # 固定
+> log_level=error        # 固定：只记错误日志
+> server_type=<ss|vless> # 安装时选
+> node_id=<节点ID>        # 安装时填
+> webapi_url=<面板地址>    # 安装时填
+> webapi_key=<自动生成>    # 自动
+> so\*\*_key=<自动生成>      # 自动
+> ```
+>
+> 要看真实路径：`so-console paths`。**不要手写这份配置**，用 `so-console install` 覆盖即可（幂等）。
 
 ---
 
-## 5. 一条命令安装
+## 5. 安装（向导只问三项，其余全固定）
 
 ```bash
-/root/so/console/so-console install /root/so
+/root/so/console/so-console install          # 向导：节点 ID → 协议 → 面板地址
 ```
 
-`install` 做这 7 件事（全部幂等，可反复跑）：
+```
+  节点 ID [ ]: 12
+  协议  1) Shadowsocks 2022   2) VLESS + REALITY
+  选择 [1]: 1
+  面板地址 [https://]: https://panel.example.com
+```
 
-1. 建目录：`/usr/local/soco`、`licence/`、配置目录；
-2. 校验并在必要时摆放 `soco` / `libsoco.so`（`0755` / `0600`）；
-3. 从项目里拷 `probe_many.py`、`soco-watchdog.py`、`routes-guard.py`、`licence/sink.py`；
-4. 生成 licence 自签证书（sink 只需要"被拒绝"，不需要可信）；
-5. 写 `/etc/hosts` 的 4 条授权域名 → `127.0.0.1`（幂等，缺才补）；
-6. 写 5 个 systemd 单元并 `daemon-reload` + `enable --now`（主服务、sink、nft 转发、watchdog、多实例模板 `soco@.service`）；
-7. 落 `/etc/so/console.conf`，然后自动跑一次闸门自检。
+**客户只填这三项**，其余由控制台固定并自动完成：
+
+| 固定项 | 值 |
+|---|---|
+| `type` / `api` | `xboard` / `webapi` |
+| `check_interval` / `submit_interval` | `60` / `60` |
+| **日志** | `log_level=error` —— **只记错误**，不刷流量流水 |
+| 节点密钥 | **自动生成**（32 位随机 hex），结果里大字打印；面板已有值就 `--webapi-key <串>` 覆盖 |
+| 闸门 | hosts 4 条 + 本地 sink(`38443`) + nft `127.0.0.1:443→38443` |
+| 单元 | `soco.service` / `soco@.service` / sink / nft / watchdog 共 5 个 |
+
+`install` 的 7 步（幂等，重复执行 = 修复）：
+
+```
+[1/7] 环境预检        root、systemctl、ss、nft、curl、openssl、二进制
+[2/7] 目录与二进制     /usr/local/soco + licence/ + 权限 0755/0600，拷探针与 watchdog
+[3/7] 写入配置         log_level=error，密钥写入
+[4/7] 授权 sink        自签证书 + hosts 4 条 + sink 38443
+[5/7] systemd 单元     5 个 + daemon-reload + enable
+[6/7] 启动与状态       active / pid / restarts / 业务端口
+[7/7] 真实握手验证     3 个用户真实转发（可 --no-probe 跳过）
+```
+
+非交互写法（批量/自动化）：
+
+```bash
+/root/so/console/so-console install --node-id 12 --type ss --url https://panel.example.com
+/root/so/console/so-console install --node-id 13 --type vless --url https://p2.example.com --webapi-key <面板的key>
+/root/so/console/so-console install --node-id 12 --type ss --url https://panel.example.com --dry-run
+```
 
 > **443 端口**：sink 监听 `38443`，`127.0.0.1:443` 用 nft dnat 指到它，所以**对外 443 是空的**，可以给网站/证书用。
 
@@ -163,14 +191,15 @@ journalctl -u soco --since '-30min' -o cat | grep -c 'auth failed'    # 期望 0
 ## 8. arm64 专属注意
 
 - 必须是 **variantE**（`sha256` 以 `549ef746…` 开头那一版）。用旧 crack 版或 `variantB` 会在 `>88` 用户时认证过、但不转发。
-- `routes.toml`（`/etc/so**/routes.toml`，真实路径看 `so-console paths`）：
+- **流媒体分流交给其它程序**（nfu / 你自己的路由器 / 面板侧规则）。本控制台**只读查看**，不写 `routes.toml`：
 
 ```bash
-/root/so/console/so-console routes list          # 条数 + 首个 Outs 出口 + loaded 状态
-/root/so/console/so-console routes switch tw     # 把第一个 Outs 块切到 tw（自动备份 .bak.<时间>）
-/root/so/console/so-console routes validate      # TOML 合法性（写坏会静默 0 条）
+/root/so/console/so-console routes            # 规则数 + 首个出站 + 最近一次加载结果
+/root/so/console/so-console routes show       # 再列若干条规则字段
+/root/so/console/so-console routes validate   # 只做 TOML 合法性检查（不动文件）
 ```
 
+- 看到 `规则数 0` 或没有 `success` 行 = TOML 被写坏或被覆盖，恢复由你那条链路的工具负责。
 - 分流模板在 `_ops/routes_tw_patch.toml`（含占位符，需要填你自己的出站 `server/port/password` 与用户 `uuid`）。
 - 出站能力矩阵（哪家串流该走哪个地区）见 `arm64/evidence/STREAM_NF_MATRIX_20261125.md`。
 
@@ -179,16 +208,16 @@ journalctl -u soco --since '-30min' -o cat | grep -c 'auth failed'    # 期望 0
 ## 9. 多实例（一台机多个机场）
 
 ```bash
-/root/so/console/so-console inst list
-/root/so/console/so-console inst new jp1 node_id=<NODE_ID> webapi_url=<PANEL_URL> webapi_key=<KEY> so**_key=<KEY>
-/root/so/console/so-console inst start jp1
-/root/so/console/so-console inst log jp1
-/root/so/console/so-console inst remove jp1
+/root/so/console/so-console inst                                   # 列表：实例/节点ID/协议/状态/重启
+/root/so/console/so-console inst new                               # 向导（实例名 → 三项）
+/root/so/console/so-console inst new jp1 --node-id 21 --type vless --url https://p2.example.com
+/root/so/console/so-console inst start jp1                         # 也可 stop / restart / log
+/root/so/console/so-console inst remove jp1                        # 停服 + 删配置（二次确认）
 ```
 
 | 约束 | 原因 |
 |---|---|
-| 每个实例一套 `<inst>.conf`，日志/缓存独立目录 | 共用会互串 |
+| 每个实例 = `soco@<名>.service` + `<名>.conf`，日志独立 | 共用会互串 |
 | **不要**让两个实例同时打满人数 | 适配层状态会互相顶掉（历史事故：在线从数百掉到个位数） |
 | 端口由面板下发，别撞主实例 | 撞了起不来，日志有 `bind: address already in use` |
 | 内存：实例数 ×（80–95 MB）+ 余量 | 1 GB 机器最多 2 个，且不同时压测 |
