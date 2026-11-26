@@ -239,9 +239,42 @@ def journal(svc, since='-10min', timeout=90):
     return sh(['journalctl', '-u', svc, '--since', since, '-o', 'cat'], timeout=timeout)[1]
 
 
-def last_user_num(svc):
+def _user_num_from_logfiles():
+    """从 soco 自己的文件日志里取最后一条 current user num。
+    log_level=error 时 journal 里不再有 INFO 行（这是刻意的，只记错误），
+    但文件日志（/etc/soga/{soga,so}-*.log）里可能还留着历史快照 —— 只作兜底并标注时间。
+    """
+    cands = []
+    for d in ('/etc/soga', '/var/log', '/usr/local/soco'):
+        p = Path(d)
+        if p.is_dir():
+            cands += [f for f in p.glob('*.log') if f.is_file()]
+    cands.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    for f in cands[:4]:
+        try:
+            tail = f.read_text(encoding='utf-8', errors='replace').splitlines()[-4000:]
+        except OSError:
+            continue
+        hits = [m.group(1) for m in
+                (re.search(r'current user num:\s*(\d+)', ln) for ln in reversed(tail)) if m]
+        if hits:
+            return hits[0], f, time.strftime('%F %T', time.localtime(f.stat().st_mtime))
+    return None, None, None
+
+
+def last_user_num(svc, with_src=False):
+    """本地用户数：journal（log_level=info 时）→ 文件日志兜底 → '-'。
+
+    with_src=True 时返回 (人数, 来源说明)。
+    """
     nums = re.findall(r'current user num:\s*(\d+)', journal(svc, '-20min'))
-    return nums[-1] if nums else '-'
+    if nums:
+        return (nums[-1], 'journal（实时）') if with_src else nums[-1]
+    n, f, mt = _user_num_from_logfiles()
+    if n:
+        return (n, '文件日志 %s（%s 的快照）' % (f.name, mt)) if with_src else n
+    return ('-', '不可读：log_level=error 不写 INFO 行，要看人数把 log_level 设为 info') \
+        if with_src else '-'
 
 
 def last_routes_line(svc):
@@ -987,7 +1020,8 @@ def cmd_status(c, _a):
     if pid and pid not in ('0', ''):
         kv('运行时长/内存/CPU', out(['ps', '-o', 'etime=,rss=,pcpu=', '-p', pid]))
     kv('业务端口', '%s (%s)' % (port or '-', 'LISTEN' if port and ':' + port in out(['ss', '-lnt']) else 'DOWN'))
-    kv('用户（本地）', last_user_num(svc))
+    unum, usrc = last_user_num(svc, with_src=True)
+    kv('用户（本地）', unum if usrc.endswith('（实时）') else '%s  %s' % (unum, usrc))
     kv('闸门计数(10m)', 'key_err=%d auth_fail=%d relay=%d'
        % (log.count('soga key'), log.count('auth failed'), log.count('tcp relay')))
     kv('分流（只读）', last_routes_line(svc))
@@ -1017,15 +1051,22 @@ def cmd_service(c, a):
 
 def cmd_users(c, _a):
     head('用户数对照')
-    local = last_user_num(c['service'])
-    kv('本地（日志）', local)
+    local, lsrc = last_user_num(c['service'], with_src=True)
+    kv('本地（日志）', local if lsrc.endswith('（实时）') else '%s  %s' % (local, lsrc))
     n = panel_users(c)
     if n is None:
         bad('面板接口失败（查 webapi_url / webapi_key / 网络）')
         return 1
     kv('面板（UniProxy）', '%d 个用户' % n)
     if local == str(n):
-        ok('对照一致')
+        if lsrc.endswith('（实时）'):
+            ok('对照一致')
+        else:
+            warn('数字一致，但本地是快照（%s）而非实时 —— log_level=error 只记错误；'
+                 '要实时对照把 log_level 改 info 再重启' % lsrc)
+    elif local == '-':
+        warn('本地人数读不到（log_level=error 不写 INFO 行）；面板侧 %d 个用户，'
+             '要看本地对照就把 log_level 改成 info 再重启' % n)
     else:
         warn('本地与面板不一致 → so-console logs %s 80' % c['service'])
     return 0
@@ -1279,6 +1320,11 @@ def cmd_doctor(c, _a):
     for name, good, hint in rows:
         print('  %s %-26s %s' % (col(G, '✔') if good else col(R, '✘'), name, '' if good else col(D, hint)))
         fails += 0 if good else 1
+    unum, usrc = last_user_num(c['service'], with_src=True)
+    if unum == '-':
+        warn('本地人数不可读：%s' % usrc)
+    else:
+        kv('本地用户数', '%s（%s）' % (unum, usrc))
     say('')
     (ok if not fails else bad)('结论：%s' % ('全部通过' if not fails else '%d 项需要处理' % fails))
     return 0 if not fails else 1

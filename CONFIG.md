@@ -45,7 +45,7 @@ so-console paths
 | `webapi_key` | `3f9c1a7d…`（面板给的那串） | **客户填** | **面板通信密钥，必须与面板完全一致；不能随机**，否则拉不到用户 |
 | `so**_key` | 任意串 | **自动（随机）** | 授权密钥；本工程已解除授权检查，随便写 |
 | `check_interval` / `submit_interval` | `60` | **固定** | 拉取/回传间隔 |
-| `log_level` | `error` | **固定** | 只记错误日志 |
+| `log_level` | `error` | **固定** | 只记错误日志。注意：设成 `error` 后 journal 不再有 `current user num`，`users`/`status` 的**本地人数**读不到（会明确提示）；想本地 vs 面板对照就临时改 `info` 再重启 |
 | `cert_mode` | `panel` / `file` / `http` / `dns`（`self` 由控制台落成 `file`） | TLS 协议才有 | 证书来源 |
 | `cert_domain` | `node.example.com` | TLS 协议才有 | 证书域名 / SNI |
 | `cert_file` / `key_file` | `/usr/local/soco/cert/cert.pem` | TLS 协议才有 | 证书与私钥路径 |
