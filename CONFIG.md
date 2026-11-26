@@ -51,7 +51,31 @@ so-console paths
 | `cert_file` / `key_file` | `/usr/local/soco/cert/cert.pem` | TLS 协议才有 | 证书与私钥路径 |
 | `dns_provider` | `cloudflare` / `aliyun` / `dnspod` | 仅 `cert_mode=dns` | DNS-01 提供商（API 凭证走环境变量） |
 
-> 想让控制台重写一遍（会先备份 `.bak.<时间戳>`）：`so-console install …`，幂等。
+### 2.1 原版模板里的可选键（都在文件里，默认关着）
+
+配置文件是**原版发行包的完整模板**（41 键 / 63 行）——下面这些键虽然在文件里，但默认值就是
+原版默认，**不用管**；要用的时候直接改值，`so-console install` 重跑**不会覆盖**它们：
+
+| 分组 | 键 | 原版默认 | 作用 |
+|---|---|---|---|
+| db 对接（二选一，替代 webapi） | `db_host` `db_port` `db_name` `db_user` `db_password` | 空 | 直接连面板数据库拉用户；用 webapi 就留空 |
+| 证书 | `cert_key_length` | `ec-256` | ACME 证书密钥类型 |
+| proxy protocol 中转 | `proxy_protocol` `udp_proxy_protocol` | `false` | 前面有中转（nginx/haproxy）时开，保留真实客户端 IP |
+| 全局 IP 数限制（需 Redis 8.0+） | `redis_ip_limit_enable` `redis_ip_limit_addr` `redis_ip_limit_password` `redis_ip_limit_db` `redis_ip_limit_tls` `redis_ip_limit_expiry` | `false` / 空 / 空 / `0` / `false` / `60` | 同一用户可同时在线 IP 数 |
+| 动态限速 | `dy_limit_enable` `dy_limit_duration` `dy_limit_trigger_time` `dy_limit_trigger_speed` `dy_limit_speed` `dy_limit_time` `dy_limit_white_user_id` | `false` / 空 / `60` / `100` / `30` / `600` / 空 | 触发式降速（超速多少、降多久） |
+| 其它限制 | `user_conn_limit` `user_speed_limit` `user_tcp_limit` `node_speed_limit` | `0` | 并发连接数 / 单用户限速 / TCP 连接数 / 节点总限速（0 = 不限制） |
+| BT 防护 | `forbidden_bit_torrent` | `true` | 禁止 BT 协议 |
+
+> 想让控制台重写一遍：`so-console install …` —— 幂等，**合并式**写入：
+> 先备份 `.bak.<时间戳>`，只更新必要项，客户改过的可选值原样保留，模板外的自定义键追加到末尾。
+>
+> 审计当前文件与原版模板的差异（缺键 / 改过的可选值 / 固定项）：
+>
+> ```bash
+> so-console conf check      # 有缺键时退出码 1，适合放进巡检脚本
+> so-console conf show       # 全文（key 类脱敏）
+> so-console conf keys       # 键名清单
+> ```
 
 ---
 

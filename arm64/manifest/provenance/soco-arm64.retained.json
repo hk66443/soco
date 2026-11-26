@@ -1,0 +1,11 @@
+{
+  "schema": "soco-retained-provenance-v1",
+  "kind": "retained-arm64",
+  "output_sha256": "1b280c886ae8c608af7acef5fb78114f1e3dff1ad12abfe1b61e6c1f8039e171",
+  "output_size": 91634064,
+  "source_binary_correspondence": "unverified-retained",
+  "source": null,
+  "source_sha256": null,
+  "historical_compiler_command": null,
+  "runtime_verified_this_round": false
+}

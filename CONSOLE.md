@@ -1,4 +1,4 @@
-# CONSOLE · `so-console` 命令参考（v2.0）
+# CONSOLE · `so-console` 命令参考（v2.1）
 
 单文件、无第三方依赖（`python3` ≥ 3.8），amd64 / arm64 同一份。
 两种用法等价：**交互控制台**（不带参数）与**直接命令**（适合脚本化）。
@@ -175,6 +175,33 @@ so-console routes validate # 只做 TOML 合法性检查（不动文件）
 
 ---
 
+## 5b. 配置一致性（`conf`）
+
+配置文件的**结构 = 原版发行包那份模板**（41 键 / 63 行），`install` 是合并式写入。用 `conf` 审计：
+
+```bash
+so-console conf check   # 对比原版模板：缺哪些键 / 哪些可选值被改过 / 固定项是否符合预期
+so-console conf show    # 打印当前配置全文（key 类值脱敏为前 6 位）
+so-console conf keys    # 只列键名 + 两边键数
+```
+
+输出示例（缺键时）：
+
+```
+╭─ 配置一致性（对比原版发行包模板）
+  配置文件              · /etc/so**/so**.conf
+  模板键数 / 当前键数   · 41 / 10
+  ✘ 缺少 31 个原版键：db_host, db_port, … forbidden_bit_torrent
+  ! 重跑 so-console install 会按原版模板补齐（客户已有值保留）
+  ! 固定项被改动（建议改回）：log_level=debug→error
+```
+
+- 缺键 → 退出码 **1**（适合写进巡检脚本）；`install` 会补齐且保留客户已有取值。
+- 可选键被改过（如 `dy_limit_enable=true`）只是提示，`install` **不会**覆盖回默认。
+- 模板之外的自定义键会列成「多出 N 个模板外键」，同样原样保留。
+
+---
+
 ## 6. 数据与恢复
 
 ```bash
@@ -189,7 +216,7 @@ so-console rollback /root/so-backup-20260101-120000.tar.gz
 
 ```
 ╭─────────────────────────────────────────────────────────────
-│ so-console 2.0   amd64          2026-01-01 12:00:00
+│ so-console 2.1   amd64          2026-01-01 12:00:00
 ╰─────────────────────────────────────────────────────────────
   ── 部署 ─────────────────────────────
    1 install   部署 / 修复本机节点（向导：只填 ID、协议、面板）
@@ -209,6 +236,7 @@ so-console rollback /root/so-backup-20260101-120000.tar.gz
   12 backup    备份（二进制 + 配置）
   13 rollback  从备份回滚
   14 paths     真实路径
+   15 conf      配置一致性（对比原版模板）
     0 quit     退出
 
   so> 

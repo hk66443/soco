@@ -215,10 +215,10 @@ type=xboard
 server_type=vless
 api=webapi
 webapi_url=https://你的面板域名/
-webapi_key=<REDACTED>
+webapi_key=面板通讯密钥
 node_id=1
 soga_key=
-<REDACTED>
+check_interval=60
 submit_interval=60
 log_level=info
 EOF

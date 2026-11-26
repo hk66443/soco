@@ -44,6 +44,25 @@
 | 操作 | 换地区：`/usr/local/bin/switch_stream_area.sh us|hk|tw|jp|kr|sg|uk` |
 | 复盘 | 见 [arm64/evidence/ARM_STREAM_ROUTES_FIX_20261123.md](arm64/evidence/ARM_STREAM_ROUTES_FIX_20261123.md) |
 
+### 1.2c 部署流程与配置一致性复测（2026-11-26）
+
+| 项 | AMD | ARM |
+|---|---|---|
+| `so**.conf` 改前 | 10 行（缺 31 个原版键） | 41 行（原版模板，`log_level=debug`） |
+| `so**.conf` 改后 | **63 行 / 41 键，与原版模板逐行一致** | 同，`log_level=error` |
+| `so-console install` | **7/7 PASS**（端口就绪 10 s） | **7/7 PASS** |
+| 用户 / 握手 | 498 = 面板 498；probe **3/3** | 498 = 面板 498；probe **3/3** |
+| 分流 routes | 0 条（本机本就空模板） | **11 条仍加载** |
+
+结论：**两台部署流程均正常，配置文件与原版发行包模板完全一致**（字段、顺序、注释分节、63 行）。
+`so-console conf check` 可随时审计差异（缺键退出码 1）。本轮修掉的 5 个缺陷见
+[amd64/evidence/DEPLOY_CONF_PARITY_20261126.md](amd64/evidence/DEPLOY_CONF_PARITY_20261126.md)，
+其中最关键两条：
+
+1. 构建流水线的行级脱敏把 `so-console` 打成 `SyntaxError`（公开包一直是坏的，一键命令从未真跑通）；
+2. `write_conf` 整份覆盖会清掉客户在原版上开的 `dy_limit_*` / `redis_ip_limit_*` / `proxy_protocol`
+   —— 已改「原版模板 + 合并写入」，重装不丢配置。
+
 ### 1.3 SSH（唯一入口）
 
 工程里用的是带白名单的封装，不要直接 `ssh`：
@@ -224,18 +243,23 @@ systemctl restart soco.service
 ### 7.2 待办（按优先级）
 
 1. **24 小时长稳**：现在只有 30 min（隔离台）+ 45 min（线上 soak）。建议挂 `probe_mesh_v2.py --duration 86400 --every 60`。
-2. ~~**纯二进制旁路**~~ **（2026-11-24 已完成，amd64 侧仍走 hosts+sink）**：
+2. ~~**部署流程 + 配置一致性复测**~~ **（2026-11-26 完成）**：AMD/ARM 均 `install 7/7 PASS`、
+   `so**.conf` 与原版模板逐行一致（41 键 / 63 行）、probe 3/3、用户数 498 对齐；
+   修掉 5 个缺陷（含公开包 so-console 语法错误、覆盖式写入丢客户配置）。
+   见 [amd64/evidence/DEPLOY_CONF_PARITY_20261126.md](amd64/evidence/DEPLOY_CONF_PARITY_20261126.md)。
+3. ~~**纯二进制旁路**~~ **（2026-11-24 已完成，amd64 侧仍走 hosts+sink）**：
    - ARM 侧已闭合：`variantC = variantB + 10 处补丁`，100 用户数据面实测通过、200 用户也通；
      符号表修正（每个入口 +0x40）+ 调用图 + amd 53 处语义映射 + 逐点 bisect 全程见
      [arm64/evidence/ARM_88_GATE_RESOLVED_20261124.md](arm64/evidence/ARM_88_GATE_RESOLVED_20261124.md)。
    - 关键结论：开闸点是 **xboard 本地 nil-error leaf `E2L2TNbFODvd.O8ecjRSd0zK`**（对应 amd64 `#52`），
      稳定性靠 8 个 SS/VLESS 控制闭包入口改 `ret`（对应 amd64 `#44–51`）。
    - 交付二进制：`arm64/bin/soco-arm64.variantC`（sha256 `7dd42983…`）；生产**尚未**更换。
-3. **sink 健壮性**：给 `soco.service` 加 `Wants=soco-licence-sink.service`、`sink` 加 `PartOf=soco.service`，避免 sink 挂掉时撞上 600 s 检查。
-4. **ARM 真机复测**：已完成（2026-11-23）。`ARM_IP` 上 soco 连续运行 ~2 h、`NRestarts=0`、
+4. **sink 健壮性**：给 `soco.service` 加 `Wants=soco-licence-sink.service`、`sink` 加 `PartOf=soco.service`，避免 sink 挂掉时撞上 600 s 检查。
+5. **ARM 真机复测**：已完成（2026-11-23）。`ARM_IP` 上 soco 连续运行 ~2 h、`NRestarts=0`、
    真实 VLESS/REALITY 链路与 10 条 NF 解锁分流均正常，**未见 600 s 数据面闸门**；
    另修掉 `routes.toml` 加载失败的静默故障（详见 [arm64/evidence/ARM_STREAM_ROUTES_FIX_20261123.md](arm64/evidence/ARM_STREAM_ROUTES_FIX_20261123.md)）。
-5. **出正式 release**：`packaging/` 里是旧包装（install/verify/manifest/checker），若要发布需要把本轮 amd64 产物与 sink/hosts 方案纳入 manifest。
+6. **出正式 release**：`packaging/` 里是旧包装（install/verify/manifest/checker），若要发布需要把本轮 amd64 产物与 sink/hosts 方案纳入 manifest。
+7. **多实例并发压测**：`soco@.service` 已补 `SOCO_INSTANCE=%i` + `WorkingDirectory`，但本轮只做单实例复测。
 
 ---
 
@@ -256,5 +280,6 @@ systemctl restart soco.service
 | AMD 497 用户全量（串行 1178 s、497/497、服务端 497 authenticated） | `amd64/evidence/AMD_497_FULL_20261125.md`、`amd64/evidence/runtime/probe497-amd-20261125-121238.log` |
 | 多实例隔离与 so\*\* 目录统一（含实测数据） | `arm64/evidence/MULTI_INSTANCE_20261125.md`、`packaging/MULTI_INSTANCE.md` |
 | 流媒体分流：NF 各节点能力矩阵与 TW 修复 | `arm64/evidence/STREAM_NF_MATRIX_20261125.md`、`_ops/routes_tw_patch.toml` |
+| 部署流程 + 配置与原版模板一致性（两台 7/7 PASS、41 键、probe 3/3） | `amd64/evidence/DEPLOY_CONF_PARITY_20261126.md`、`_ops/test_conf_parity.py` |
 | nfu / so\*\* 生态兼容 + 路由守卫 + watchdog（含停摆演练） | `arm64/evidence/NFU_COMPAT_20261125.md`、`packaging/routes-guard.py`、`packaging/soco-watchdog.py` |
 | 安装/更新与多实例管理脚本 | `packaging/install-soco.sh`、`packaging/soco-multi.sh`、`packaging/soco@.service` |

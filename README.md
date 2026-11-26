@@ -98,6 +98,7 @@ TLS 协议再多问一项证书方式；其余（`type`、`api`、间隔、日�
   12 backup    备份（二进制 + 配置）
   13 rollback  从备份回滚
   14 paths     真实路径
+  15 conf      配置一致性（对比原版模板）
     0 quit     退出
 
   so> 
@@ -108,12 +109,16 @@ TLS 协议再多问一项证书方式；其余（`type`、`api`、间隔、日�
 ```
 [1/7] 环境预检           root / systemctl / ss / nft / curl / openssl / 二进制
 [2/7] 目录与二进制        /usr/local/soco + licence/，权限 0755 / 0600
-[3/7] 写入配置（固定参数）   log_level=error（只记错误）
+[3/7] 写入配置（原版模板）  结构 = 原版 41 键 / 63 行；合并式写入，客户已有值保留
 [4/7] 授权 sink          自签证书 + hosts 4 条 + sink 38443
 [5/7] systemd 单元        5 个 + daemon-reload + enable
-[6/7] 启动与状态          active / pid / restarts / 业务端口
-[7/7] 真实握手验证        3 个用户真实转发（--no-probe 可跳过）
+[6/7] 启动与状态          active / pid / restarts / 业务端口就绪（实测 10–19 s）
+[7/7] 真实握手验证        3 个用户真实转发（--no-probe 可跳过；失败会自动等 15 s 复测）
 ```
+
+> **配置文件与原版一致**：`/etc/so**/so**.conf` 就是原版发行包那份 41 键模板，
+> 控制台只填必要项，可选键（`dy_limit_*` / `redis_ip_limit_*` / `proxy_protocol` …）保留原版默认
+> 且重装不覆盖。随时可审计：`so-console conf check`（见 [CONFIG.md](CONFIG.md) §2.1）。
 
 ### 1.3 一行式（脚本 / 批量，不进菜单）
 
@@ -203,9 +208,10 @@ so-console inst remove  jp1
 | `users` | 本地 vs 面板用户数对照 |
 | `probe 3` / `probe all` / `probe N 1,50,89` | 真实握手（串行） |
 | `gate` | 600 秒闸门自检（hosts / sink / nft / key 错误） |
-| `doctor` | 全量自检（15 项，逐项 PASS/FAIL + 修复提示） |
+| `doctor` | 全量自检（16 项，含「配置与原版模板一致」，逐项 PASS/FAIL + 修复提示） |
 | `verify` | 二进制指纹、unit 关键行、适配层是否加载 |
 | `routes` / `routes show` / `routes validate` | 流媒体分流**只读**查看与 TOML 校验 |
+| `conf check` / `conf show` / `conf keys` | 配置与原版模板比对（缺键则退出码 1）/ 打印 / 键名 |
 | `backup` / `rollback [file]` | 备份（二进制+配置）/ 从备份恢复 |
 | `paths` | 真实路径（配置 / 二进制 / 实例 / 端口 / 架构） |
 | `help` | 用法 |

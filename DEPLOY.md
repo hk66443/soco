@@ -114,19 +114,26 @@ TLS 协议（`vmess` / `trojan` / `anytls` / `hysteria`，以及要自带证书�
 `panel`（面板下发）/ `self`（本机自签）/ `file`（已有证书）/ `http`（ACME HTTP-01）/ `dns`（ACME DNS-01）。
 逐项说明与命令写法见 **[CONFIG.md](CONFIG.md) §3**。
 
-> 配置文件由控制台写（`0600`，路径 `/etc/so**/so**.conf`）—— **机场/主控信息都在这个文件里**，内容固定：
+> 配置文件由控制台写（`0600`，路径 `/etc/so**/so**.conf`）。
+> **结构与原版发行包里的 `so**.conf` 模板逐行一致**（41 个键 / 63 行，注释分节、键名、顺序全同），
+> 客户拿原版配置来对比不会少任何一项：
 >
-> ```ini
-> type=xboard            # 固定
-> api=webapi             # 固定
-> check_interval=60      # 固定
-> submit_interval=60     # 固定
-> log_level=error        # 固定：只记错误日志
-> server_type=<ss|vless> # 安装时选
-> node_id=<节点ID>        # 安装时填
-> webapi_url=<面板地址>    # 安装时填
-> webapi_key=<面板给的串 / 留空则随机>    # 客户填（或随机）
-> so\*\*_key=<同一串>                       # 与 webapi_key 相同
+> | 谁负责 | 键 |
+> |---|---|
+> | **控制台填值**（安装时写死或按客户选择） | `type` `api` `server_type` `node_id` `webapi_url` `webapi_key` `so**_key` `check_interval` `submit_interval` `log_level` `cert_mode` `cert_domain` `cert_file` `key_file` `dns_provider` |
+> | **沿用原版模板默认值**（要开就自己改，install 会保留） | `db_host` `db_port` `db_name` `db_user` `db_password` `cert_key_length` `proxy_protocol` `udp_proxy_protocol` `redis_ip_limit_*`(6) `dy_limit_*`(7) `user_conn_limit` `user_speed_limit` `user_tcp_limit` `node_speed_limit` `forbidden_bit_torrent` |
+>
+> **install 是合并写入，不是覆盖重写**：文件已存在时先备份 `.bak.<时间戳>`，然后
+> ① 只改上表「控制台填值」那几项；② 客户在原版上已开的 `dy_limit_*` / `redis_ip_limit_*` /
+> `proxy_protocol` / `user_*_limit` 等取值**原样保留**；③ 模板之外的键原样追加到文件末尾。
+> 也就是说，从原版 `so**` 换过来、或者反复重装，都不会丢配置。
+>
+> 装完（或任何时候）都可以审计一遍：
+>
+> ```bash
+> so-console conf check     # 对比原版模板：缺哪些键、哪些可选值被改过、固定项是否符合预期
+> so-console conf show      # 打印当前配置（key 类已脱敏）
+> so-console conf keys      # 只列键名
 > ```
 >
 > 要看真实路径：`so-console paths`。**不要手写这份配置**，用 `so-console install` 覆盖即可（幂等）。
