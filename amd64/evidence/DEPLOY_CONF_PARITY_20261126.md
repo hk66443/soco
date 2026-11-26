@@ -1,6 +1,6 @@
 # 部署流程 & 配置一致性专项复测（amd64 + arm64）— 2026-11-26
 
-> 结论先说：**两台都跑通，配置与原版模板完全一致**。过程中修掉 5 个真实缺陷，
+> 结论先说：**两台都跑通，配置与原版模板完全一致**。过程中修掉 6 个真实缺陷，
 > 其中 2 个会导致「客户根本装不上」和「重装丢客户配置」，1 个会把 so-console 打成语法错误。
 >
 > 复测口径：`/root/so/console/so-console`（v2.1）+ 本机 `_push` 树（= GitHub 公开版）；
@@ -44,7 +44,7 @@ check_interval=60 / submit_interval=60 / forbidden_bit_torrent=true / log_level=
 
 ---
 
-## 2. 修掉的 5 个缺陷
+## 2. 修掉的 6 个缺陷
 
 ### ① `write_conf` 写的配置与原版不同（10 键 vs 41 键）
 
@@ -94,6 +94,19 @@ check_interval=60 / submit_interval=60 / forbidden_bit_torrent=true / log_level=
 - 原因：等待条件写成 `svc_state=='active' and out(['ss','-lnt'])`（`ss` 有输出即真，从不检查业务端口）。
 - 修：改为等**业务端口真的 LISTEN**（实测就绪 10 s，上限 60 s）；握手失败自动等 15 s 复测一轮，
   并在输出里标注「第 2 轮」。
+
+### ⑥ `log_level=error` 把「本地人数」读没了（改配置的副作用）
+
+- 现象：install 把 `log_level` 从 `debug` 收紧到 `error` 后，`so-console users` / `status` 的
+  「本地（日志）」变成 `-`，只剩面板 498；`users` 误报「本地与面板不一致」。
+- 原因：本地人数来自 journal 里的 `current user num`（INFO 级），日志级别收紧后不再写。
+- 修：
+  - `last_user_num` 三级回退：journal 实时 → **soco 文件日志**（`/etc/so**/*.log`）里的最后快照
+    → 明确提示「不可读 + 为什么」；
+  - 输出标注来源与时间（例：`498 文件日志 so**-ss-2026-11-26.log（2026-11-26 07:46:12 的快照）`）；
+  - 快照来源时 `users` 用 **警告**而不是「✔ 对照一致」，避免拿过期数字当实时；
+  - `doctor` 增一行「本地用户数」，读不到时只 warn 不计 FAIL；
+  - CONFIG.md 说明：要本地 vs 面板实时对照，把 `log_level` 改 `info` 再重启。
 
 ### 附带：systemd 单元补齐两处与原版对齐
 

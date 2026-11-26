@@ -245,7 +245,7 @@ systemctl restart soco.service
 1. **24 小时长稳**：现在只有 30 min（隔离台）+ 45 min（线上 soak）。建议挂 `probe_mesh_v2.py --duration 86400 --every 60`。
 2. ~~**部署流程 + 配置一致性复测**~~ **（2026-11-26 完成）**：AMD/ARM 均 `install 7/7 PASS`、
    `so**.conf` 与原版模板逐行一致（41 键 / 63 行）、probe 3/3、用户数 498 对齐；
-   修掉 5 个缺陷（含公开包 so-console 语法错误、覆盖式写入丢客户配置）。
+   修掉 6 个缺陷（含公开包 so-console 语法错误、覆盖式写入丢客户配置、log_level=error 后本地人数不可读）。
    见 [amd64/evidence/DEPLOY_CONF_PARITY_20261126.md](amd64/evidence/DEPLOY_CONF_PARITY_20261126.md)。
 3. ~~**纯二进制旁路**~~ **（2026-11-24 已完成，amd64 侧仍走 hosts+sink）**：
    - ARM 侧已闭合：`variantC = variantB + 10 处补丁`，100 用户数据面实测通过、200 用户也通；

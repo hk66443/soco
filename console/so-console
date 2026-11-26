@@ -243,22 +243,23 @@ def _user_num_from_logfiles():
     """从 soco 自己的文件日志里取最后一条 current user num。
     log_level=error 时 journal 里不再有 INFO 行（这是刻意的，只记错误），
     但文件日志（/etc/soga/{soga,so}-*.log）里可能还留着历史快照 —— 只作兜底并标注时间。
+    目录按「soco 自己的日志优先」顺序找，避免读到 syslog 转发副本（daemon.log）造成误判。
     """
-    cands = []
-    for d in ('/etc/soga', '/var/log', '/usr/local/soco'):
+    for d in ('/etc/soga', '/usr/local/soco', '/var/log'):
         p = Path(d)
-        if p.is_dir():
-            cands += [f for f in p.glob('*.log') if f.is_file()]
-    cands.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-    for f in cands[:4]:
-        try:
-            tail = f.read_text(encoding='utf-8', errors='replace').splitlines()[-4000:]
-        except OSError:
+        if not p.is_dir():
             continue
-        hits = [m.group(1) for m in
-                (re.search(r'current user num:\s*(\d+)', ln) for ln in reversed(tail)) if m]
-        if hits:
-            return hits[0], f, time.strftime('%F %T', time.localtime(f.stat().st_mtime))
+        files = [f for f in p.glob('*.log') if f.is_file()]
+        files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+        for f in files[:4]:
+            try:
+                tail = f.read_text(encoding='utf-8', errors='replace').splitlines()[-4000:]
+            except OSError:
+                continue
+            hits = [m.group(1) for m in
+                    (re.search(r'current user num:\s*(\d+)', ln) for ln in reversed(tail)) if m]
+            if hits:
+                return hits[0], str(f), time.strftime('%F %T', time.localtime(f.stat().st_mtime))
     return None, None, None
 
 
@@ -272,7 +273,7 @@ def last_user_num(svc, with_src=False):
         return (nums[-1], 'journal（实时）') if with_src else nums[-1]
     n, f, mt = _user_num_from_logfiles()
     if n:
-        return (n, '文件日志 %s（%s 的快照）' % (f.name, mt)) if with_src else n
+        return (n, '日志文件 %s 里 %s 的快照' % (f, mt)) if with_src else n
     return ('-', '不可读：log_level=error 不写 INFO 行，要看人数把 log_level 设为 info') \
         if with_src else '-'
 
