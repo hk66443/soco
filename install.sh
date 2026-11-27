@@ -46,11 +46,24 @@ else
         src="$(find "$tmp" -maxdepth 1 -type d -name 'soco-*' | head -1)"
         [ -n "$src" ] || die "解包后找不到项目目录"
         mkdir -p "$DEST"
-        cp -a "${src}/." "$DEST/"
+        # 用 tar 覆盖（保留 DEST 里多出来的文件），并**排除 install.sh 自身**：
+        # 用户很可能就在 /root/so 里 `bash install.sh`，旧逻辑会在执行途中把这个文件覆盖掉，
+        # bash 继续按已打开的 fd 读新内容 → 后半段行为错乱（实测：新版脚本跑出旧版行为）。
+        ( cd "$src" && tar cf - --exclude='./install.sh' . ) | ( cd "$DEST" && tar xf - ) \
+            || die "复制项目到 ${DEST} 失败"
     elif command -v git >/dev/null 2>&1; then
-        say "   tarball 失败，改用 git clone"
-        rm -rf "$DEST"; mkdir -p "$(dirname "$DEST")"
-        git clone --depth 1 -b "$BRANCH" "https://github.com/${REPO}.git" "$DEST"
+        say "   tarball 失败，改用 git clone（先克隆到临时目录，成功后再覆盖 ${DEST}）"
+        clone_root="$(mktemp -d /var/tmp/so-clone.XXXXXX 2>/dev/null || mktemp -d)"
+        if git clone --depth 1 -b "$BRANCH" "https://github.com/${REPO}.git" "${clone_root}/so"; then
+            # 以前是 rm -rf "$DEST" 再 clone：clone 一失败，已经装好的目录就没了
+            mkdir -p "$DEST"
+            ( cd "${clone_root}/so" && tar cf - --exclude='./.git' --exclude='./install.sh' . ) \
+                | ( cd "$DEST" && tar xf - ) || { rm -rf "$clone_root"; die "复制项目到 ${DEST} 失败"; }
+            rm -rf "$clone_root"
+        else
+            rm -rf "$clone_root"
+            die "git clone 失败：https://github.com/${REPO}.git（${BRANCH}）"
+        fi
     else
         die "下载失败，且没有 git 可用"
     fi
@@ -78,14 +91,46 @@ if [ "${SO_SKIP_BIN:-0}" = "1" ]; then
 elif [ "$need_bin" = "1" ]; then
     say "== 下载二进制（${ARCH}, ${VER}）→ ${BIN_DIR}"
     mkdir -p "$BIN_DIR"
-    tmpb="$(mktemp -d)"
+    # 空间预检：soco 解出来 ~82 MB + libsoco + tarball，临时目录太小会在解包一半时炸。
+    # /tmp 常是 tmpfs（实测这台只有 482 MB），所以临时目录优先放 /var/tmp（根分区）。
+    need_mb=350
+    avail_mb=$(df -Pm "$(dirname "$BIN_DIR")" 2>/dev/null | awk 'NR==2{print $4}')
+    if [ -n "${avail_mb:-}" ] && [ "$avail_mb" -lt "$need_mb" ]; then
+        die "磁盘空间不足：$(dirname "$BIN_DIR") 只剩 ${avail_mb} MB，装这套二进制至少要 ${need_mb} MB
+   先清理：du -sh /tmp/* /root/* | sort -h | tail"
+    fi
+    tmpb="$(mktemp -d /var/tmp/so-bin.XXXXXX 2>/dev/null || mktemp -d)"
+    tball="${tmpb}/soco-bin-${ARCH}.tar.gz"
     url="https://github.com/${REPO}/releases/download/${VER}/soco-bin-${ARCH}.tar.gz"
-    if ! curl -fL --retry 3 --max-time 600 --progress-bar "$url" -o "${tmpb}/bin.tgz"; then
+    if ! curl -fL --retry 3 --max-time 600 --progress-bar "$url" -o "$tball"; then
         rm -rf "$tmpb"
         die "二进制下载失败：$url
    可手动下载后放到 ${BIN_DIR}/（soco + libsoco.so），或用 SO_SKIP_BIN=1 跳过"
     fi
-    tar xzf "${tmpb}/bin.tgz" -C "$tmpb"
+    # 完整性校验：release 里带 SHA256SUMS。下载被截断/被中间页替换时，
+    # 以前会照样"装"上去，然后服务起不来自查半天。
+    sums_url="https://github.com/${REPO}/releases/download/${VER}/SHA256SUMS"
+    if curl -fsSL --max-time 60 "$sums_url" -o "${tmpb}/SHA256SUMS.raw" 2>/dev/null \
+       && [ -s "${tmpb}/SHA256SUMS.raw" ]; then
+        # release 里的 SHA256SUMS 是 CRLF 行尾（实测 `…tar.gz^M$`）：
+        # 不先去掉 \r，`grep '…tar\.gz$'` 永远匹配不到，校验会静默「跳过」。
+        tr -d '\r' < "${tmpb}/SHA256SUMS.raw" > "${tmpb}/SHA256SUMS" 2>/dev/null || true
+        line="$(grep -E "soco-bin-${ARCH}\.tar\.gz$" "${tmpb}/SHA256SUMS" 2>/dev/null || true)"
+        if [ -z "$line" ]; then
+            say "   （SHA256SUMS 里没有 ${ARCH} 条目，跳过校验）"
+        elif printf '%s\n' "$line" | ( cd "$tmpb" && sha256sum -c - >/dev/null 2>&1 ); then
+            say "   sha256 校验通过（SHA256SUMS）"
+        else
+            rm -rf "$tmpb"
+            die "sha256 校验失败：$url（下载损坏或版本对不上；重试或用 SO_FORCE_BIN=1）"
+        fi
+    else
+        say "   （release 里没有 SHA256SUMS，跳过校验）"
+    fi
+    tar xzf "$tball" -C "$tmpb" || {
+        rm -rf "$tmpb"
+        die "解包失败（多数是磁盘空间不足，看上面 tar 的报错）：$tball"
+    }
     for f in soco libsoco.so; do
         [ -f "${tmpb}/${f}" ] || { rm -rf "$tmpb"; die "包里缺 ${f}"; }
     done

@@ -6,18 +6,23 @@
 
 做法（两架构同一份，靠 soga.conf 的 server_type 自适应）：
   - 每 PROBE_EVERY 秒，从面板拉 config + user（node_type 按 server_type 自动映射）；
-  - 用 sing-box 在本机 127.0.0.1:11009 起 socks 入口，经本机节点打到 marker
+  - 用 sing-box 在本机 127.0.0.1:<空闲端口，默认 11009> 起 socks 入口，经本机节点打到 marker
     http://127.0.0.1:18089/，必须回 "M" 才算健康（端口在听不算）；
   - 连续 FAILS_TO_RESTART 次失败 → systemctl restart soco；
   - 面板拉不到用户 / 网络异常 → unknown，不重启；
-  - 进程启动 30 s 内不判；PREEMPT_SECONDS>0 时按运行时长兜底先行重启（默认 0 = 关）。
+  - 进程启动 30 s 内不判；PREEMPT_SECONDS>0 时按运行时长兜底先行重启（默认 0 = 关）；
+  - 退出（SIGTERM/SIGINT/SIGHUP）时把自己拉起的 sing-box 一起收掉，不留孤儿占端口。
 
 配置路径候选：/etc/soga/soga.conf（现行）→ /etc/soco/soco.conf（旧路径）。
 """
+import atexit
 import base64
 import json
 import os
+import signal
+import socket
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -35,6 +40,7 @@ PROBE_EVERY = int(os.environ.get('PROBE_EVERY', '30'))
 FAILS_TO_RESTART = int(os.environ.get('FAILS_TO_RESTART', '3'))
 PREEMPT = float(os.environ.get('PREEMPT_SECONDS', '0'))
 MAX_LOG = 5 * 1024 * 1024
+STORM_LIMIT = int(os.environ.get('STORM_LIMIT', '5'))   # 连续重启这么多次就停手
 
 
 def log(rec):
@@ -86,7 +92,11 @@ def panel(conf, what):
                          capture_output=True, text=True, timeout=30)
     if out.returncode != 0:
         raise RuntimeError('panel fetch rc=%d %s' % (out.returncode, out.stderr.strip()[:120]))
-    return json.loads(out.stdout)
+    try:
+        return json.loads(out.stdout)
+    except ValueError:
+        # 面板返回 HTML（域名错 / 面板维护）时以前直接抛 ValueError，日志里只有一个类型名
+        raise RuntimeError('panel returned non-JSON: %s' % out.stdout[:120].replace('\n', ' '))
 
 
 def build_cfg(conf, node, user, port):
@@ -149,28 +159,92 @@ def restart(reason, extra=None):
     time.sleep(25)
 
 
-def probe_once():
-    c = subprocess.run(['curl', '-sS', '-x', 'socks5h://127.0.0.1:%d' % SOCKS_PORT,
+def probe_once(port=SOCKS_PORT):
+    c = subprocess.run(['curl', '-sS', '-x', 'socks5h://127.0.0.1:%d' % port,
                         '--max-time', '10', 'http://127.0.0.1:%d/' % MARKER_PORT],
                        capture_output=True, text=True, timeout=20)
     return (c.returncode == 0 and c.stdout.strip() == 'M'), c
 
 
+def port_free(port, host='127.0.0.1'):
+    """端口是否空闲（用来挑一个能用的 socks 端口）。"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def pick_socks_port(preferred=SOCKS_PORT, span=50):
+    """挑一个空闲的 socks 端口。
+
+    以前固定 11009：遗留的 sing-box（父进程被杀、子进程没回收）会一直占着它，
+    重启 watchdog 后探针就永久起不来 —— 要么判成故障去重启健康服务，要么永远 skip。
+    """
+    for p in range(preferred, preferred + span):
+        if port_free(p):
+            return p
+    return None
+
+
 def main():
-    srv = ThreadingHTTPServer(('127.0.0.1', MARKER_PORT), Marker)
+    try:
+        srv = ThreadingHTTPServer(('127.0.0.1', MARKER_PORT), Marker)
+    except OSError as e:
+        # marker 端口被占：整个探针无法工作。以前直接 traceback → systemd 无限重启。
+        log({'event': 'marker_bind_failed', 'port': MARKER_PORT, 'err': str(e)[:160],
+             'action': 'exit'})
+        print('watchdog: marker 端口 %d 被占用（%s）；不启动，避免把健康服务判成故障'
+              % (MARKER_PORT, e), file=sys.stderr, flush=True)
+        return 1
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 
     client = None
     client_key = None
+    # 退出时把 sing-box 一起收掉：以前 systemctl stop/kill 只会杀 watchdog 本体，
+    # sing-box 变孤儿继续占着 socks 端口和 ~80 MB 内存（实测踩过，下次启动只能换端口）。
+    client_box = [None]
+
+    def _cleanup_client():
+        p = client_box[0]
+        if p is not None and p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=5)
+            except Exception:
+                p.kill()
+
+    atexit.register(_cleanup_client)
+
+    def _on_term(signum, _frame):
+        log({'event': 'watchdog_signal', 'signal': int(signum), 'action': 'exit'})
+        raise SystemExit(0)
+
+    for _sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(_sig, _on_term)
+        except (ValueError, OSError):
+            pass
+
     fails = 0
     restarts = 0
+    storm = False
     logged_ok = False
     last_preempt = 0.0
+    socks = pick_socks_port()
+    if socks is None:
+        log({'event': 'no_free_socks_port', 'preferred': SOCKS_PORT, 'action': 'exit'})
+        print('watchdog: 11009..%d 全被占用，找不到空闲 socks 端口；不启动'
+              % (SOCKS_PORT + 49), file=sys.stderr, flush=True)
+        return 1
     cp = conf_path()
     log({'event': 'watchdog_start', 'conf': str(cp), 'probe_every': PROBE_EVERY,
          'fails_to_restart': FAILS_TO_RESTART, 'preempt_seconds': PREEMPT,
-         'sbox': str(SBOX), 'sbox_present': SBOX.is_file()})
+         'socks_port': socks, 'sbox': str(SBOX), 'sbox_present': SBOX.is_file()})
 
     while True:
         try:
@@ -198,7 +272,7 @@ def main():
                 time.sleep(PROBE_EVERY)
                 continue
 
-            cfg, key = build_cfg(conf, node, users[0], SOCKS_PORT)
+            cfg, key = build_cfg(conf, node, users[0], socks)
             if client is None or client.poll() is not None or client_key != key:
                 if client is not None and client.poll() is None:
                     client.terminate()
@@ -212,10 +286,11 @@ def main():
                                           stdin=subprocess.DEVNULL,
                                           stdout=subprocess.DEVNULL,
                                           stderr=subprocess.DEVNULL)
+                client_box[0] = client
                 client_key = key
                 time.sleep(3)
 
-            ok, c = probe_once()
+            ok, c = probe_once(socks)
             if ok:
                 if fails:
                     log({'event': 'recovered', 'fails_before': fails})
@@ -224,6 +299,10 @@ def main():
                          'server_port': node.get('server_port'),
                          'uuid': str(users[0].get('uuid'))[:8] + '…'})
                     logged_ok = True
+                if storm:
+                    log({'event': 'storm_cleared', 'restarts_before': restarts})
+                    storm = False
+                    restarts = 0
                 fails = 0
             else:
                 fails += 1
@@ -233,11 +312,20 @@ def main():
                 if fails >= FAILS_TO_RESTART:
                     restarts += 1
                     fails = 0
-                    restart('probe_failed', {'restarts': restarts,
-                                             'type': conf.get('server_type')})
-                    ok2, c2 = probe_once()
-                    log({'event': 'after_restart', 'ok': ok2, 'curl_exit': c2.returncode,
-                         'restarts': restarts, 'service': service_state()})
+                    if restarts >= STORM_LIMIT:
+                        # 重启 5 次还是不通：多半是节点/面板/网络本身的问题，继续重启只会
+                        # 把服务来回掐断（每次 restart 都会断一次所有用户）。停手，只记录。
+                        if not storm:
+                            log({'event': 'restart_storm', 'restarts': restarts,
+                                 'action': 'stop_restarting',
+                                 'note': '恢复一次探活成功即自动解除并清零'})
+                        storm = True
+                    if not storm:
+                        restart('probe_failed', {'restarts': restarts,
+                                                 'type': conf.get('server_type')})
+                        ok2, c2 = probe_once(socks)
+                        log({'event': 'after_restart', 'ok': ok2, 'curl_exit': c2.returncode,
+                             'restarts': restarts, 'service': service_state()})
         except Exception as e:
             log({'event': 'probe_error', 'type': type(e).__name__,
                  'message': str(e)[:200], 'action': 'skip'})
@@ -245,4 +333,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

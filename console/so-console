@@ -18,6 +18,7 @@
 import argparse
 import json
 import os
+import posixpath
 import re
 import secrets
 import shutil
@@ -611,7 +612,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 {bin_dir}/licence/sink.py --listen 0.0.0.0:38443
+ExecStart=/usr/bin/python3 {bin_dir}/licence/sink.py --listen 127.0.0.1:38443
 Restart=always
 RestartSec=3
 
@@ -1260,6 +1261,12 @@ def cmd_install(c, a):
     else:
         node_id, stype, url, wizard_key, cert = wizard_target(c)
     name = getattr(a, 'name', None) or 'main'
+    # 实例名不能等于主配置名：`--name soga` / `inst new soga` 会写到 /etc/soga/soga.conf，
+    # 把主实例的配置覆盖掉；同一份配置还会被 soco 与 soco@soga 两个进程同时读（抢端口）。
+    main_stem = Path(c['conf']).stem
+    if name != 'main' and name in (main_stem, 'soga', 'so'):
+        bad('实例名不能是主配置名（%s）；换一个，例如 jp1' % main_stem)
+        return 2
     conf_path = Path(c['conf']) if name == 'main' else Path(c['inst_dir']) / ('%s.conf' % name)
     # 面板密钥优先级：--webapi-key > 向导里贴的 > 已有配置沿用 > 本机随机（并提示回填面板）
     key = getattr(a, 'webapi_key', None) or wizard_key or ''
@@ -1550,6 +1557,11 @@ def cmd_inst(c, a):
         if (d / ('%s.conf' % name)).exists():
             bad('实例 %s 已存在（先 inst remove 或换名字）' % name)
             return 1
+        main_stem = Path(c['conf']).stem
+        if name in (main_stem, 'soga', 'so'):
+            # 主配置同名：会把 /etc/soga/soga.conf 写成"实例配置"，主实例也跟着读它
+            bad('实例名不能是主配置名（%s）；换一个，例如 jp1' % main_stem)
+            return 2
         if getattr(a, 'node_id', None) and getattr(a, 'url', None):
             node_id, stype, url = a.node_id, getattr(a, 'stype', None) or 'ss', a.url.rstrip('/')
             if stype in TLS_PROTOS and not getattr(a, 'cert_mode', None):
@@ -1653,13 +1665,39 @@ def cmd_backup(c, a):
         return 1
     dst = outdir / ('so-backup-%s.tar.gz' % ts)
     try:
+        free_mb = shutil.disk_usage(str(outdir)).free // (1024 * 1024)
+        if free_mb < 200:
+            # 一次备份 70–120 MB；/tmp 是 tmpfs 时更容易撞满（实测 AMD /tmp 只有 482 MB）
+            warn('备份目录 %s 只剩 %d MB（一次备份 ~70–120 MB）；先清理旧备份或换 SO_BACKUP_DIR'
+                 % (outdir, free_mb))
+    except OSError:
+        pass
+    try:
+        def _skip(ti):
+            # 别把上一次的备份/编译缓存打进新备份：否则每备份一次都变大一截。
+            # 注意 `.bak.` 出现在文件名中间（soco-watchdog.py.bak.2026…），不能用 '/.bak.'。
+            n = '/' + ti.name.replace('\\', '/').lstrip('/')
+            if '__pycache__' in n or '.bak.' in n or n.endswith('.pyc'):
+                return None
+            # 实例私有日志/缓存目录（/etc/soga/instances/<name>/）不备份：可能很大且可重建。
+            # 注意目录条目本身叫 `…/instances`（结尾没有斜杠），所以不能写 '/instances/'。
+            if '/instances' in n or '/access_log' in n:
+                return None
+            return ti
+
         with tarfile.open(dst, 'w:gz') as t:
             for p in (c['bin_dir'], c['inst_dir']):
                 if Path(p).exists():
-                    t.add(p)
+                    t.add(p, filter=_skip)
     except (OSError, tarfile.TarError) as e:
         bad('打包失败：%s' % e)
         return 1
+    try:
+        # 备份里有 soga_key / webapi_key / licence 私钥：默认 umask 022 会写成 644，
+        # 同机其它用户能读。收紧到 600。
+        dst.chmod(0o600)
+    except OSError:
+        pass
     ok('%s（%d KB）' % (dst, dst.stat().st_size // 1024))
     if keep:
         olds = sorted(outdir.glob('so-backup-*.tar.gz'))
@@ -1709,31 +1747,84 @@ def cmd_rollback(c, a):
             return 2
         if not confirm('确认用 %s 覆盖当前 %s 与配置目录？' % (pick.name, c['bin_dir'])):
             return 0
-    allowed = tuple(p.lstrip('/') for p in (str(Path(c['bin_dir'])), str(Path(c['inst_dir']))))
+    # tar 成员名不带前导 /，这里统一成无前导 / 的规范形式再比
+    allowed = tuple(posixpath.normpath(str(Path(p))).lstrip('/')
+                    for p in (c['bin_dir'], c['inst_dir']))
+
+    def _member_ok(name):
+        """成员名必须规范化后仍落在允许目录内：挡住 ../、绝对路径、相对根。"""
+        if not name or name.startswith('/') or name.startswith('~'):
+            return False
+        parts = name.split('/')
+        if '..' in parts:
+            return False
+        real = posixpath.normpath(name.lstrip('./')).lstrip('/')
+        if real in ('.', ''):
+            return False
+        return any(real == a or real.startswith(a + '/') for a in allowed)
+
     try:
         with tarfile.open(pick, 'r:gz') as t:
-            bads = [m.name for m in t.getmembers()
-                    if m.name and not m.name.lstrip('./').startswith(allowed)]
+            members = t.getmembers()
     except (OSError, tarfile.TarError) as e:
         bad('备份打不开：%s' % e)
         return 3
+    bads = [m.name for m in members if not _member_ok(m.name)]
     if bads:
-        # rollback 解到 /，必须是「只会覆盖二进制目录 + 配置目录」的备份；别的路径一律拒绝
-        bad('备份里有 %d 条非预期路径（例：%s），拒绝解包（只允许 %s）'
+        # 前缀匹配会被 `usr/local/soco/../tmp/x` 绕过；这里按规范化后的真实路径判
+        bad('备份里有 %d 条路径不安全（穿越 / 越界 / 绝对路径，例：%s），拒绝解包（只允许 %s）'
             % (len(bads), bads[0], ' / '.join(allowed)))
+        return 4
+    # 只接受「完整的 so 备份」：必须含 bin_dir/soco 且体积像样（真包 82 MB）。
+    # 否则随便一个小 tar（比如 4 字节的 soco）就能把主程序覆盖掉——2026-11-27 实测踩过。
+    want_soco = posixpath.normpath(str(Path(c['bin_dir']) / 'soco')).lstrip('/')
+    soco_m = [m for m in members
+              if posixpath.normpath(m.name.lstrip('./')).lstrip('/') == want_soco]
+    if not soco_m or soco_m[0].size < 1_000_000:
+        bad('这不是一份完整的 so 备份：%s（%s 字节）；拒绝覆盖'
+            % ('缺 soco' if not soco_m else 'soco 只有 %d' % soco_m[0].size, want_soco))
+        warn('要恢复就先用 so-console backup 生成备份，别手工塞 tar（或 --file 指向错文件了）')
         return 4
     sh(['systemctl', 'stop', c['service']])
     try:
         with tarfile.open(pick, 'r:gz') as t:
-            try:
-                t.extractall('/', filter='data')
-            except TypeError:                     # python < 3.12
-                t.extractall('/')
+            for m in t.getmembers():
+                if m.issym() or m.islnk():
+                    continue                      # 符号/硬链接一律不落盘
+                if not _member_ok(m.name):
+                    continue
+                try:
+                    try:
+                        t.extract(m, '/', filter='data')     # python >= 3.12
+                    except TypeError:
+                        t.extract(m, '/')                   # python 3.9/3.10/3.11（成员已校验）
+                except (OSError, tarfile.TarError) as e:
+                    warn('跳过 %s：%s' % (m.name, e))
     except (OSError, tarfile.TarError) as e:
         bad('解包失败：%s（服务保持停止，请手动处理）' % e)
         return 3
+    got = Path(c['bin_dir']) / 'soco'
+    if not got.is_file() or got.stat().st_size < 1_000_000:
+        bad('回滚后 %s 不正常（%s 字节）；请手动处理或重新 SO_FORCE_BIN=1 装二进制'
+            % (got, got.stat().st_size if got.exists() else 0))
+        return 5
     sh(['systemctl', 'start', c['service']])
-    ok('已恢复 %s' % pick.name)
+    # 回滚后同样要等端口就绪：以前 start 完立刻打状态，用户看到 DOWN 以为回滚失败
+    st = svc_state(c['service'])
+    if st != 'active':
+        warn('已恢复 %s，但服务状态是 %s（没在跑）；so-console logs %s 40 看原因'
+             % (pick.name, st, c['service']))
+        return cmd_status(c, a)
+    port = ''
+    for _ in range(24):
+        time.sleep(1.5)
+        port = port_of_service(c['service']) or det_port(c)
+        if port and (':%s' % port) in out(['ss', '-lnt']):
+            break
+    if port and (':%s' % port) in out(['ss', '-lnt']):
+        ok('已恢复 %s（:%s 已就绪）' % (pick.name, port))
+    else:
+        warn('已恢复 %s，但 :%s 还没监听；稍后 so-console status / logs 看一眼' % (pick.name, port or '-'))
     return cmd_status(c, a)
 
 
