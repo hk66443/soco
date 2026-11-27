@@ -194,10 +194,14 @@ def cfg_save(d):
     CFG.write_text(''.join('%s=%s\n' % (k, v) for k, v in d.items()), encoding='utf-8')
 
 
-def sh(cmd, timeout=180):
+def sh(cmd, timeout=180, env=None):
+    e = None
+    if env:
+        e = dict(os.environ)
+        e.update(env)
     try:
         p = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True,
-                           text=True, timeout=timeout)
+                           text=True, timeout=timeout, env=e)
         return p.returncode, (p.stdout or '') + (p.stderr or '')
     except subprocess.TimeoutExpired:
         return 124, 'timeout'
@@ -510,12 +514,17 @@ def port_of_service(svc):
 
 
 def human_size(path):
-    """du -h 的大小字段；文件不存在时返回 '-'（不能直接 split('\\t')[0]，否则拿到整行）。"""
+    """文件大小的可读字符串；不依赖外部 du（最小化镜像里不一定有），文件不存在返回 '-'。"""
     p = Path(path)
-    if not p.is_file():
+    try:
+        n = float(p.stat().st_size)
+    except (OSError, ValueError):
         return '-'
-    s = out(['du', '-h', str(p)])
-    return s.split('\t')[0].strip() if '\t' in s else (s.strip() or '-')
+    for unit in ('B', 'K', 'M', 'G'):
+        if n < 1024 or unit == 'G':
+            return ('%d%s' % (round(n), unit)) if unit == 'B' else ('%.1f%s' % (n, unit))
+        n /= 1024.0
+    return '-'
 
 
 def key_of(path, name, default=''):
@@ -526,6 +535,21 @@ def key_of(path, name, default=''):
     except OSError:
         pass
     return default
+
+
+def reuse_or_new_soga_key(a, conf_path):
+    """soga_key 幂等：--soga-key > 已有配置里的值 > 随机。
+
+    以前每次 install 都随机生成一个：同一台机器重跑一次修复就换掉授权密钥，
+    面板侧若也跟着存了这串（部分机场会比对），修一次就断一次。
+    """
+    v = (getattr(a, 'soga_key', None) or '').strip()
+    if v:
+        return v, 'cli'
+    old = key_of(conf_path, 'soga_key') if Path(conf_path).is_file() else ''
+    if old:
+        return old, 'reuse'
+    return secrets.token_hex(16), 'auto'
 
 
 # ══════════════════════════════════════════════════════════════ units
@@ -1018,7 +1042,7 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
     else:
         # 等「业务端口真的 LISTEN」而不是「ss 有输出」（后者恒真，曾导致刚重启就判成功、
         # 紧接着 probe 全部握手失败）。就绪时间实测 10–19 s，最多等 60 s。
-        port, waited = '', 0.0
+        port, waited, own = '', 0.0, ''
         # 实例的期望端口只来自它自己的面板 config；主实例才允许回落到「主服务实际监听/console.conf」。
         expect = ''
         if not main_inst:
@@ -1028,25 +1052,49 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
             waited += 1.5
             if svc_state(svc) != 'active':
                 continue
-            port = port_of_service(svc) or (det_port(ctx) if main_inst else expect)
-            if port and (':%s' % port) in out(['ss', '-lnt']):
-                break
+            if main_inst:
+                p = port_of_service(svc) or det_port(ctx)
+                if p and (':%s' % p) in out(['ss', '-lnt']):
+                    port = p
+                    break
+            else:
+                # 实例必须「自己的 PID」在监听：以前只看「expect 端口有人听」，
+                # 实例把端口配成和主实例一样时会拿主实例的 listener 判 PASS。
+                p = port_of_service(svc)
+                if p:
+                    own = port = p
+                    break
+                port = expect
         st, rs = svc_props(svc, 'ActiveState', 'NRestarts')
         pid = main_pid(svc)
-        listening = bool(port) and (':%s' % port) in out(['ss', '-lnt'])
+        listening = bool(own) if not main_inst else (bool(port) and (':%s' % port) in out(['ss', '-lnt']))
         if st == 'active' and listening:
             step(i, n_steps, '启动与状态', 'ok', 'pid=%s restarts=%s port=%s 就绪 %.0fs'
                  % (pid, rs, port, waited))
+        elif st == 'active' and not main_inst:
+            start_failed = True
+            busy = expect and (':%s' % expect) in out(['ss', '-lnt'])
+            step(i, n_steps, '启动与状态', 'fail',
+                 '实例没监听自己的端口 %s%s（%.0fs）'
+                 % (expect or '-',
+                    '；该端口已被别的进程占用（检查面板给这个节点的 server_port）' if busy else '',
+                    waited))
+            warn('看日志： so-console logs %s 120' % svc)
         elif st == 'active':
+            start_failed = True
             step(i, n_steps, '启动与状态', 'fail', 'active 但 :%s 未监听（%.0fs）' % (port or '-', waited))
             warn('看日志： so-console logs %s 120' % svc)
         else:
+            start_failed = True
             step(i, n_steps, '启动与状态', 'fail', st or 'unknown')
             warn('看日志： so-console logs %s 120' % svc)
 
     i += 1
     failed = 0
     if locals().get('failed_sink'):
+        failed += 1
+    if locals().get('start_failed'):
+        # [6/7] 失败（服务没起来 / 实例没监听自己的端口）以前不计数，部署照样返回 0
         failed += 1
     step(i, n_steps, '真实握手验证', 'run')
     if dry or not probe_after:
@@ -1072,7 +1120,10 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
                 if tries > 1:
                     warn('首轮握手未全通过，等 15 s 复测（重启后仍在拉用户）')
                     time.sleep(15)
-                rc, s = sh(['python3', script, '3', '1,2,3'], timeout=300)
+                # 实例验证必须用**实例自己的配置**拉用户/端口：probe_many.py 默认读主配置，
+                # 不传 SO_PROBE_CONF 会把「主实例通」当成「实例通」（之前在实例部署里误判 PASS）
+                probe_env = None if main_inst else {'SO_PROBE_CONF': str(conf_path)}
+                rc, s = sh(['python3', script, '3', '1,2,3'], timeout=300, env=probe_env)
                 line = [l for l in s.splitlines() if l.startswith('TOTAL')]
                 if rc == 0:
                     break
@@ -1187,6 +1238,13 @@ def cmd_install(c, a):
     if has_args:
         node_id, url = a.node_id, a.url.rstrip('/')
         stype = getattr(a, 'stype', None) or ('vless' if arch() == 'arm64' else 'ss')
+        if stype in TLS_PROTOS and not getattr(a, 'cert_mode', None):
+            # vmess/trojan/anytls/hysteria 必须有证书；以前非交互不给 --cert-mode 也照样写配置，
+            # 装完 soco 起不来（或裸跑），要人去猜原因。vless 走面板 REALITY，不算在内。
+            bad('%s 需要证书：加 --cert-mode panel|self|file|http|dns'
+                % stype)
+            warn('例：--cert-mode self（本机自签，最快能用）｜--cert-mode http --cert-domain node.example.com')
+            return 2
         cert = cert_from_args(a, stype, c)
     else:
         node_id, stype, url, wizard_key, cert = wizard_target(c)
@@ -1202,7 +1260,9 @@ def cmd_install(c, a):
             ok('检测到已有配置，沿用原 webapi_key（重跑不会换 key）')
     if not key:
         key, key_src = secrets.token_hex(16), 'auto'
-    soga_key = getattr(a, 'soga_key', None) or secrets.token_hex(16)
+    soga_key, sk_src = reuse_or_new_soga_key(a, conf_path)
+    if sk_src == 'reuse':
+        ok('沿用已有 soga_key（重跑不会换授权密钥）')
     return deploy(c, node_id, stype, url, key, soga_key=soga_key, cert=cert, name=name,
                   dry=getattr(a, 'dry_run', False),
                   probe_after=not getattr(a, 'no_probe', False), key_src=key_src)
@@ -1234,7 +1294,11 @@ def cmd_status(c, _a):
     kv('主服务', '%s pid=%s restarts=%s' % (svc_state(svc), pid or '-',
                                             out(['systemctl', 'show', svc, '-p', 'NRestarts', '--value'])))
     if pid and pid not in ('0', ''):
-        kv('运行时长/内存/CPU', out(['ps', '-o', 'etime=,rss=,pcpu=', '-p', pid]))
+        raw = out(['ps', '-o', 'etime=,rss=,pcpu=', '-p', pid]).split()
+        if len(raw) >= 3:
+            kv('运行时长/内存/CPU', '%s / %d MB / CPU %s%%' % (raw[0], int(raw[1]) // 1024, raw[2]))
+        else:
+            kv('运行时长/内存/CPU', ' '.join(raw) or '-')
     kv('业务端口', '%s (%s)' % (port or '-', 'LISTEN' if port and ':' + port in out(['ss', '-lnt']) else 'DOWN'))
     unum, usrc = last_user_num(svc, with_src=True)
     if usrc.endswith('（实时）'):
@@ -1269,7 +1333,20 @@ def cmd_service(c, a):
             sh(['systemctl', 'start', u])
     rc, s = sh(['systemctl', act, svc + '.service'])
     ok(s.strip() or 'done')
-    time.sleep(2 if act != 'stop' else 1)
+    if act in ('start', 'restart'):
+        # 以前固定 sleep 2 就打 status：soco 实测要 10–19 s 才监听，用户看到 DOWN 会以为重启失败
+        port = ''
+        for _ in range(24):
+            time.sleep(1.5)
+            port = port_of_service(svc) or det_port(c)
+            if port and (':%s' % port) in out(['ss', '-lnt']):
+                break
+        if port and (':%s' % port) in out(['ss', '-lnt']):
+            ok(':%s 已就绪' % port)
+        else:
+            warn('端口还没起来（实测就绪 10–19 s），稍后 so-console status / logs 看一眼')
+    else:
+        time.sleep(1)
     return cmd_status(c, a)
 
 
@@ -1323,22 +1400,41 @@ def cmd_probe(c, a):
         bad('找不到探测客户端（sing-box-probe），放在 %s/sing-box-probe 后重试（DEPLOY.md §2.1）'
             % c['bin_dir'])
         return 2
+    idx = (getattr(a, 'idx', None) or '').replace(' ', '')
+    if idx and not re.fullmatch(r'\d+(,\d+)*', idx):
+        bad('用户索引只能是逗号分隔的数字：%s（例：probe 3 1,2,3）' % idx)
+        return 2
     cmd = ['python3', '-u', str(script), n]
-    if getattr(a, 'idx', None):
-        cmd.append(a.idx)
+    if idx:
+        cmd.append(idx)
     head('真实握手  %s' % ' '.join(cmd[2:]))
     t0 = time.time()
     rc, s = sh(cmd, timeout=7200)
+    total_ok = total_n = None
     for ln in s.splitlines():
         ln = ln.strip()
         if ln.startswith('TOTAL'):
             m = re.search(r'ok=(\d+)/(\d+)', ln)
-            if m and m.group(1) == m.group(2):
-                ok(ln)
-            else:
-                bad(ln)
-        elif 'FAIL' in ln:
-            bad(ln)
+            if m:
+                total_ok, total_n = int(m.group(1)), int(m.group(2))
+                (ok if total_ok == total_n else bad)(ln)
+        elif ln.startswith('users='):
+            kv('抓取', ln[:120])
+        elif ln.startswith('FAIL') or ' FAIL ' in ln:
+            bad(ln[:140])
+    if rc != 0:
+        # 探针自己崩了（比如索引非法 / 面板拉不到用户）时，别只留一个「退出码 1」
+        tail = [ln for ln in s.splitlines() if ln.strip() and not ln.startswith('TOTAL')]
+        if not total_n or total_n == 0:
+            bad('探针没有产出任何结果，尾部输出：')
+            for ln in tail[-4:]:
+                print('    ' + ln[:140])
+        elif tail:
+            warn('探针尾部输出：')
+            for ln in tail[-3:]:
+                print('    ' + ln[:140])
+    if total_n is not None and idx and total_ok == total_n and total_n < int(n):
+        warn('只测了 %d 个：索引越界（超出面板用户数）的会被跳过' % total_n)
     kv('退出码', rc)
     kv('耗时', '%ds' % round(time.time() - t0))
     return 0 if rc == 0 else 1
@@ -1349,6 +1445,7 @@ def cmd_gate(c, _a):
     svc = c['service']
     hosts_ok = all(h in read_hosts() for h in LICENCE_HOSTS)
     checks = [
+        ('主服务 active', svc_state(svc) == 'active'),      # 服务没在跑时谈「闸门被压制」没意义
         ('hosts 4 条授权域名', hosts_ok),
         ('sink 服务', svc_state('soco-licence-sink') == 'active'),
         ('sink 监听 38443', ':38443' in out(['ss', '-lnt'])),
@@ -1377,7 +1474,13 @@ def cmd_routes(c, a):
     if act == 'validate':
         rc, s = sh(['python3', '-c', 'import sys,tomllib;d=tomllib.load(open(sys.argv[1],"rb"));'
                     'print("rules=%d" % len(d.get("routes",[])))', str(rp)])
-        (ok if rc == 0 else bad)(s.strip() or 'invalid')
+        if rc == 0:
+            ok(s.strip() or 'valid')
+        else:
+            # 以前把 python 的整段 traceback 原样贴给客户；只留最后一行 + 一句怎么办
+            tail = [ln for ln in s.strip().splitlines() if ln.strip()]
+            bad('toml 解析失败：%s' % (tail[-1][:160] if tail else 'invalid'))
+            warn('改回可用内容，或删掉 %s（分流交给其它程序时不需要它）' % rp)
         return rc
     t = rp.read_text(errors='replace')
     kv('文件', str(rp))
@@ -1438,6 +1541,9 @@ def cmd_inst(c, a):
             return 1
         if getattr(a, 'node_id', None) and getattr(a, 'url', None):
             node_id, stype, url = a.node_id, getattr(a, 'stype', None) or 'ss', a.url.rstrip('/')
+            if stype in TLS_PROTOS and not getattr(a, 'cert_mode', None):
+                bad('%s 实例需要证书：加 --cert-mode panel|self|file|http|dns' % stype)
+                return 2
             wkey, cert = '', cert_from_args(a, stype, c)
         else:
             if not sys.stdin.isatty():
@@ -1446,7 +1552,16 @@ def cmd_inst(c, a):
             node_id, stype, url, wkey, cert = wizard_target(c)
         key = getattr(a, 'webapi_key', None) or wkey or secrets.token_hex(16)
         key_src = 'panel' if (getattr(a, 'webapi_key', None) or wkey) else 'auto'
-        soga_key = getattr(a, 'soga_key', None) or secrets.token_hex(16)
+        if not getattr(a, 'webapi_key', None) and not wkey:
+            # 实例重跑同样不该换面板密钥：已有实例配置就沿用
+            inst_conf = Path(c['inst_dir']) / ('%s.conf' % name)
+            if inst_conf.is_file():
+                old_k = key_of(inst_conf, 'webapi_key')
+                if old_k:
+                    key, key_src = old_k, 'reuse'
+        soga_key, sk_src = reuse_or_new_soga_key(a, Path(c['inst_dir']) / ('%s.conf' % name))
+        if sk_src == 'reuse':
+            ok('沿用已有 soga_key（重跑不会换授权密钥）')
         return deploy(c, node_id, stype, url, key, soga_key=soga_key, cert=cert, name=name,
                       dry=getattr(a, 'dry_run', False),
                       probe_after=not getattr(a, 'no_probe', False), key_src=key_src)
@@ -1502,6 +1617,10 @@ def cmd_logs(c, a):
     if n < 1:
         bad('行数必须 ≥ 1')
         return 2
+    load_state = (out(['systemctl', 'show', unit, '-p', 'LoadState', '--value']) or '').strip()
+    if load_state in ('not-found', 'masked', ''):
+        bad('没有这个单元：%s（不加参数就是主服务 %s）' % (unit, c['service']))
+        return 1
     head('日志 %s（最后 %d 行）' % (unit, n))
     say(sh(['journalctl', '-u', unit, '-n', str(n), '-o', 'cat'])[1].rstrip() or '(空)')
     return 0
@@ -1611,6 +1730,7 @@ def cmd_verify(c, _a):
     head('指纹与接线')
     bd = Path(c['bin_dir'])
     ps = probe_script(c)
+    fails = 0
     for n in ('soco', 'libsoco.so', 'soco-watchdog.py'):
         f = bd / n
         if f.is_file():
@@ -1618,16 +1738,29 @@ def cmd_verify(c, _a):
             kv(n, '%s  %s' % (h, human_size(f)))
         else:
             bad('%s 缺失' % n)
-    (ok if ps else bad)('握手探测脚本 %s' % (str(ps) if ps else '缺失（so-console install）'))
+            fails += 1
+    if ps:
+        ok('握手探测脚本 %s' % ps)
+    else:
+        bad('握手探测脚本缺失（so-console install 会从项目 _ops/ 拷）')
+        fails += 1
     u = Path('/etc/systemd/system/%s.service' % c['service'])
     if u.is_file():
         for ln in u.read_text().splitlines():
             if ln.startswith(('ExecStart', 'Environment')):
                 kv('unit', ln[:60])
+    else:
+        bad('unit 不存在：%s（so-console install）' % u)
+        fails += 1
     pid = main_pid(c['service'])
     loaded = pid not in ('', '0') and 'libsoco' in out(['cat', '/proc/%s/maps' % pid])
-    (ok if loaded else bad)('适配层（LD_PRELOAD libsoco.so）%s' % ('已加载' if loaded else '未加载'))
-    return 0
+    if loaded:
+        ok('适配层（LD_PRELOAD libsoco.so）已加载')
+    else:
+        bad('适配层（LD_PRELOAD libsoco.so）未加载%s'
+            % ('' if pid not in ('', '0') else '（主服务没在跑：so-console service start）'))
+        fails += 1
+    return 1 if fails else 0
 
 
 def cmd_doctor(c, _a):
@@ -1667,6 +1800,12 @@ def cmd_doctor(c, _a):
     say('')
     (ok if not fails else bad)('结论：%s' % ('全部通过' if not fails else '%d 项需要处理' % fails))
     return 0 if not fails else 1
+
+
+def cmd_version(c, _a):
+    print('so-console %s  (%s, python %s)' % (VERSION, c['arch'] or arch(),
+                                              sys.version.split()[0]))
+    return 0
 
 
 def cmd_paths(c, _a):
@@ -1752,6 +1891,9 @@ def cmd_conf(c, a):
             print(ln)
         return 0
     if a.action == 'keys':
+        if not path.is_file():
+            bad('配置不存在：%s' % path)
+            return 1
         keys = list(parse_conf(path))
         print(' '.join(keys))
         kv('当前键数', len(keys))
@@ -1763,7 +1905,7 @@ def cmd_conf(c, a):
 
 # ══════════════════════════════════════════════════════════════ menu
 # 菜单里「必须带参数」的命令：只有它们才在选中后追问一行参数
-NEEDS_ARG = {'inst', 'service', 'probe', 'logs', 'routes', 'rollback'}
+NEEDS_ARG = {'inst', 'service', 'probe', 'logs', 'routes', 'rollback', 'backup'}
 
 MENU = [
     ('deploy', [
@@ -1907,7 +2049,7 @@ def build_parser():
     pbk = sub.add_parser('backup', add_help=False)
     pbk.add_argument('--keep', type=int)
 
-    for name in ('status', 'users', 'gate', 'doctor', 'verify', 'paths', 'help'):
+    for name in ('status', 'users', 'gate', 'doctor', 'verify', 'paths', 'help', 'version'):
         sub.add_parser(name, add_help=False)
 
     pc = sub.add_parser('conf', add_help=False)
@@ -1931,6 +2073,7 @@ USAGE = """so-console %s · 一键部署与运维控制台
   只读：  routes status | routes validate        （分流由其它程序负责）
   数据：  backup [--keep N] | rollback [--file <备份>] | paths
   实例：  inst list | inst new <名字> … | inst restart <名字> | inst remove <名字> [--yes]
+  版本：  version | -v | --version
 
 谁填什么
   客户：节点 ID、协议、面板地址(webapi_url)、面板通信密钥(webapi_key，必须与面板一致)
@@ -1948,6 +2091,7 @@ CMDS = {
     'users': cmd_users, 'probe': cmd_probe, 'gate': cmd_gate, 'routes': cmd_routes,
     'inst': cmd_inst, 'logs': cmd_logs, 'backup': cmd_backup, 'rollback': cmd_rollback,
     'verify': cmd_verify, 'doctor': cmd_doctor, 'paths': cmd_paths, 'conf': cmd_conf,
+    'version': cmd_version,
 }
 
 
@@ -1978,6 +2122,8 @@ def main():
         c['arch'] = arch()
     if len(sys.argv) == 1:
         return interactive(c)
+    if sys.argv[1] in ('-v', '--version'):
+        return cmd_version(c, None)
     rc = dispatch(c, sys.argv[1], sys.argv[2:])
     return rc if isinstance(rc, int) else 0
 

@@ -13,9 +13,14 @@ import time
 import uuid
 from pathlib import Path
 
-CONF = next((p for p in [Path('/etc/soga/soga.conf'), Path('/etc/soco/soco.conf')] if p.is_file()), None)
+CONF = (Path(os.environ['SO_PROBE_CONF']) if os.environ.get('SO_PROBE_CONF')
+        else next((p for p in [Path('/etc/soga/soga.conf'), Path('/etc/soco/soco.conf')]
+                   if p.is_file()), None))
 SBOX = Path('/usr/local/soco/sing-box-probe')
-WORK = Path('/tmp/probe-multi')
+# 每次运行用独立目录 + 独立端口段：两个 probe 同时跑（或实例部署的验证和手动 probe 撞上）
+# 会抢同一个 socks 端口，表现为随机 FAIL。
+WORK = Path('/tmp/probe-multi-%d' % os.getpid())
+PORT_BASE = 13000 + (os.getpid() % 1000)
 TRACE = 'https://www.cloudflare.com/cdn-cgi/trace'
 
 
@@ -78,12 +83,13 @@ def main():
         step = max(1, n // count)
         idxs = list(range(0, n, step))[:count]
     WORK.mkdir(parents=True, exist_ok=True)
-    print('users=%d sample=%d type=%s uptime_done' % (n, len(idxs), conf.get('server_type')))
+    print('users=%d sample=%d type=%s conf=%s uptime_done'
+          % (n, len(idxs), conf.get('server_type'), CONF))
     ok = 0
     fails = []
     for i, ix in enumerate(idxs):
         user = users[ix]
-        port = 12100 + i
+        port = PORT_BASE + i
         p = WORK / ('%d.json' % i)
         p.write_text(json.dumps(build_cfg(conf, cfg, user, port)))
         proc = subprocess.Popen([str(SBOX), 'run', '-c', str(p)],
@@ -108,6 +114,9 @@ def main():
     print('TOTAL ok=%d/%d' % (ok, len(idxs)))
     for f in fails:
         print('  FAIL %s' % (f,))
+    # 每次都留下 /tmp/probe-multi-<pid>/ 会越攒越多（每个几十 KB），跑完就清
+    import shutil
+    shutil.rmtree(WORK, ignore_errors=True)
     return 0 if ok == len(idxs) else 1
 
 
