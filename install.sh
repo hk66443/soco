@@ -10,6 +10,7 @@
 # 可用环境变量覆盖：
 #   SO_REPO=user/repo   SO_BRANCH=main   SO_DEST=/root/so
 #   SO_VER=v2.18.1      （二进制 release 的 tag）
+#   SO_SKIP_PULL=1      （不拉/不更新项目文件，沿用现有的 ${SO_DEST}）
 #   SO_SKIP_BIN=1       （跳过二进制下载，自己放 /usr/local/soco/）
 #   SO_FORCE_BIN=1      （即使已有二进制也重新下载覆盖）
 set -euo pipefail
@@ -29,10 +30,16 @@ command -v curl >/dev/null 2>&1 || die "缺 curl，先 apt install -y curl"
 command -v tar  >/dev/null 2>&1 || die "缺 tar"
 
 # ── 1. 拉项目 ────────────────────────────────────────────────────────────
-say "== 拉取 ${REPO}@${BRANCH} → ${DEST}"
-if [ -x "${DEST}/console/so-console" ]; then
-    say "   已存在，跳过下载"
+say "== 拉取/更新 ${REPO}@${BRANCH} → ${DEST}"
+if [ "${SO_SKIP_PULL:-0}" = "1" ] && [ -x "${DEST}/console/so-console" ]; then
+    say "   跳过拉取（SO_SKIP_PULL=1），沿用现有 ${DEST}"
+elif [ "${SO_SKIP_PULL:-0}" = "1" ]; then
+    die "SO_SKIP_PULL=1，但 ${DEST}/console/so-console 不存在"
 else
+    # 默认「拉最新并覆盖程序文件」：以前的逻辑是「DEST 里已有 console 就跳过」，
+    # 结果老机器永远停在第一次装的版本，修好的补丁一条都到不了客户手里。
+    # /etc 下的配置与面板参数不受影响（配置在 /etc/soga/soga.conf）。
+    say "   覆盖更新程序文件（/etc 下的配置不动；要保留本地改动可设 SO_SKIP_PULL=1）"
     tmp="$(mktemp -d)"
     if curl -fsSL --retry 3 --max-time 120 "$TARBALL" -o "${tmp}/so.tgz"; then
         tar xzf "${tmp}/so.tgz" -C "$tmp"

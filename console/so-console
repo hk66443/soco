@@ -205,6 +205,27 @@ def sh(cmd, timeout=180):
         return 127, str(e)
 
 
+DEPLOY_LOCK = '/tmp/.so-console.deploy.lock'
+
+
+def deploy_lock():
+    """部署互斥：两个 install 同时跑会互相踩（同一批 unit / sink / hosts）。
+
+    成功返回打开的文件对象（进程退出自动释放），拿不到返回 None。
+    """
+    try:
+        import fcntl
+        f = open(DEPLOY_LOCK, 'w')
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.close()
+            return None
+        return f
+    except Exception:
+        return None                            # 没有 fcntl（非 Linux）就不拦
+
+
 def out(cmd):
     return sh(cmd)[1].strip()
 
@@ -854,8 +875,15 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
             os.chmod(skey, 0o600)
         missing = [h for h in LICENCE_HOSTS if h not in read_hosts()]
         if missing:
-            with Path('/etc/hosts').open('a') as f:
-                f.write(''.join('\n127.0.0.1 %s\n' % h for h in missing))
+            try:
+                with Path('/etc/hosts').open('a') as f:
+                    f.write(''.join('\n127.0.0.1 %s\n' % h for h in missing))
+            except OSError as e:
+                # 只读 /etc/hosts（容器、immutable 属性）时以前直接 traceback；
+                # 这里算「闸门路径没铺好」，明确判失败并说清后果。
+                step(i, n_steps, '授权 sink + hosts + nft', 'fail',
+                     '/etc/hosts 不可写：%s（600 s 闸门不会被压制）' % e)
+                return 4
         # sink 38443 的真实验证放在下一步（systemd 单元）之后：那一步才写单元并启动 sink。
         # 这里曾直接读「后一步才赋值」的 sink_up，导致首装/修复一律在 [4/7] 抛
         # UnboundLocalError —— 单元永远写不出来、服务永远起不来（2026-11-27 现网事故）。
@@ -1088,6 +1116,10 @@ def wizard_target(ctx):
 # ══════════════════════════════════════════════════════════════ commands
 def cmd_install(c, a):
     wizard_key, cert = '', None
+    lk = deploy_lock()
+    if lk is None:
+        bad('另一个 so-console 正在部署（%s），等它结束再试一次' % DEPLOY_LOCK)
+        return 2
     has_args = bool(getattr(a, 'node_id', None) and getattr(a, 'url', None))
     if not has_args and not sys.stdin.isatty():
         # 管道 / CI / `curl … | bash` 场景没有 TTY：明确告知怎么给参数，别让向导读 EOF
@@ -1324,6 +1356,10 @@ def cmd_inst(c, a):
         return 0
     if act in ('new', 'deploy'):
         head('新增实例')
+        lk = deploy_lock()
+        if lk is None:
+            bad('另一个 so-console 正在部署（%s），等它结束再试一次' % DEPLOY_LOCK)
+            return 2
         name = getattr(a, 'name', None)
         if not name:
             if not sys.stdin.isatty():
@@ -1374,6 +1410,7 @@ def cmd_inst(c, a):
                 return 0
             sh(['systemctl', 'disable', '--now', sv])   # --now 会同时 stop，不会留僵尸进程
             (d / ('%s.conf' % name)).unlink(missing_ok=True)
+            shutil.rmtree(Path(c['inst_dir']) / 'instances' / name, ignore_errors=True)  # 实例私有日志目录
             ok('已删除 %s' % name)
         else:
             sh(['systemctl', act, sv])
@@ -1409,6 +1446,10 @@ def cmd_logs(c, a):
 def cmd_backup(c, a):
     head('备份')
     keep = getattr(a, 'keep', None)
+    if keep is None:
+        # 一份备份 ~70 MB（二进制 82 M + 探针 76 M，压缩后 70 M）。默认只留最近 3 份，
+        # 以前默认不清理 —— 客户跑几个月就把 /root 撑满，最后连 install 都写不进。
+        keep = '3'
     ts = time.strftime('%Y%m%d-%H%M%S')
     outdir = Path(os.environ.get('SO_BACKUP_DIR') or '/root')
     try:
@@ -1433,23 +1474,27 @@ def cmd_backup(c, a):
             kv('已清理', old.name)
     left = sorted(outdir.glob('so-backup-*.tar.gz'))
     kv('现有备份', '%d 个（%s）' % (len(left), outdir))
+    kv('保留策略', '最近 %s 份（--keep N 调整，--keep 0 = 不清理）' % keep)
     return 0
 
 
 def cmd_rollback(c, a):
     head('回滚')
     outdir = Path(os.environ.get('SO_BACKUP_DIR') or '/root')
-    cands = sorted(outdir.glob('so-backup-*.tar.gz'))
-    if not cands:
-        bad('没有备份（%s）' % outdir)
-        return 1
     pick = None
-    if getattr(a, 'file', None):
-        pick = Path(a.file)
+    want = getattr(a, 'file_opt', None) or getattr(a, 'file', None)
+    if want:
+        # --file 指定时必须先认这个文件：以前先查默认目录（/root）里有没有备份，
+        # /root 空就直接「没有备份」返回 1，给了 --file 也没用。
+        pick = Path(want)
         if not pick.is_file():
             bad('备份文件不存在：%s' % pick)
             return 1
     else:
+        cands = sorted(outdir.glob('so-backup-*.tar.gz'))
+        if not cands:
+            bad('没有备份（%s）' % outdir)
+            return 1
         if not sys.stdin.isatty():
             # 管道 / 脚本里没有「选择 #」这一步可交互；不给 --file 就会一直等 stdin（实测会挂到超时）
             bad('非交互回滚要指定文件：so-console rollback --file <备份文件>')
@@ -1464,8 +1509,25 @@ def cmd_rollback(c, a):
             bad('编号超出范围：%s（1–%d）' % (sel, len(cands)))
             return 2
         pick = cands[n - 1]
-    if not confirm('确认用 %s 覆盖当前 %s 与配置目录？' % (pick.name, c['bin_dir'])):
-        return 0
+    if not getattr(a, 'yes', False):
+        if not sys.stdin.isatty():
+            bad('非交互回滚要显式确认：so-console rollback --file <备份> --yes')
+            return 2
+        if not confirm('确认用 %s 覆盖当前 %s 与配置目录？' % (pick.name, c['bin_dir'])):
+            return 0
+    allowed = tuple(p.lstrip('/') for p in (str(Path(c['bin_dir'])), str(Path(c['inst_dir']))))
+    try:
+        with tarfile.open(pick, 'r:gz') as t:
+            bads = [m.name for m in t.getmembers()
+                    if m.name and not m.name.lstrip('./').startswith(allowed)]
+    except (OSError, tarfile.TarError) as e:
+        bad('备份打不开：%s' % e)
+        return 3
+    if bads:
+        # rollback 解到 /，必须是「只会覆盖二进制目录 + 配置目录」的备份；别的路径一律拒绝
+        bad('备份里有 %d 条非预期路径（例：%s），拒绝解包（只允许 %s）'
+            % (len(bads), bads[0], ' / '.join(allowed)))
+        return 4
     sh(['systemctl', 'stop', c['service']])
     try:
         with tarfile.open(pick, 'r:gz') as t:
@@ -1772,7 +1834,9 @@ def build_parser():
     pr.add_argument('action', nargs='?', default='status', choices=['status', 'show', 'validate'])
 
     pb = sub.add_parser('rollback', add_help=False)
-    pb.add_argument('file', nargs='?')
+    pb.add_argument('file', nargs='?', help='备份文件（也可以写 --file）')
+    pb.add_argument('--file', dest='file_opt', help='备份文件（等价写法）')
+    pb.add_argument('--yes', '-y', action='store_true', help='非交互回滚时显式确认')
 
     pbk = sub.add_parser('backup', add_help=False)
     pbk.add_argument('--keep', type=int)
@@ -1799,7 +1863,7 @@ USAGE = """so-console %s · 一键部署与运维控制台
   验证：  probe 3 | probe all | gate | doctor | verify
   配置：  conf check（与原版 soga 模板比对）| conf show | conf keys | conf get <键名>
   只读：  routes status | routes validate        （分流由其它程序负责）
-  数据：  backup [--keep N] | rollback | paths
+  数据：  backup [--keep N] | rollback [--file <备份>] | paths
   实例：  inst list | inst new <名字> … | inst restart <名字> | inst remove <名字> [--yes]
 
 谁填什么

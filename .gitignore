@@ -11,8 +11,22 @@ xray*
 *.jsonl
 *__result.partial.json
 
+# secrets / credentials never enter this repo
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*git-credentials*
+*.bak.*
+so-backup-*.tar.gz
+
 # local scratch
 _push/
+tools/
 tmp/
 *.pyc
 __pycache__/
