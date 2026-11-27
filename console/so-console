@@ -248,6 +248,9 @@ def _user_num_from_logfiles():
     log_level=error 时 journal 里不再有 INFO 行（这是刻意的，只记错误），
     但文件日志（/etc/soga/{soga,so}-*.log）里可能还留着历史快照 —— 只作兜底并标注时间。
     目录按「soco 自己的日志优先」顺序找，避免读到 syslog 转发副本（daemon.log）造成误判。
+
+    ⚠ 只认**本次启动之后**写的行：soco 重启时不会清空日志文件，旧数字（比如换机器前的 498）
+    会被当成当前值读出来。所以先取文件里最后一条 `init log file` 的时间，只在其之后找。
     """
     for d in ('/etc/soga', '/usr/local/soco', '/var/log'):
         p = Path(d)
@@ -257,13 +260,22 @@ def _user_num_from_logfiles():
         files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
         for f in files[:4]:
             try:
-                tail = f.read_text(encoding='utf-8', errors='replace').splitlines()[-4000:]
+                lines = f.read_text(encoding='utf-8', errors='replace').splitlines()[-6000:]
             except OSError:
                 continue
-            hits = [m.group(1) for m in
-                    (re.search(r'current user num:\s*(\d+)', ln) for ln in reversed(tail)) if m]
+            # 本次进程的起点：最后一条 init log file（没有就整份都算）
+            start = 0
+            for i, ln in enumerate(lines):
+                if 'init log file' in ln:
+                    start = i
+            hits = []
+            for ln in lines[start:]:
+                m = re.search(r'current user num:\s*(\d+)', ln)
+                if m:
+                    hits.append((m.group(1), ln[:19]))
             if hits:
-                return hits[0], str(f), time.strftime('%F %T', time.localtime(f.stat().st_mtime))
+                n, ts = hits[-1]
+                return n, str(f), ts
     return None, None, None
 
 
@@ -277,7 +289,7 @@ def last_user_num(svc, with_src=False):
         return (nums[-1], 'journal（实时）') if with_src else nums[-1]
     n, f, mt = _user_num_from_logfiles()
     if n:
-        return (n, '日志文件 %s 里 %s 的快照' % (f, mt)) if with_src else n
+        return (n, '日志文件 %s 里 %s 的值' % (f, mt)) if with_src else n
     return ('-', '不可读：log_level=error 不写 INFO 行，要看人数把 log_level 设为 info') \
         if with_src else '-'
 
