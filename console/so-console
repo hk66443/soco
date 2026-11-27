@@ -81,6 +81,15 @@ def col(code, s):
 B, D, G, Y, R = '1', '2', '32', '33', '31'
 
 
+class Cancelled(Exception):
+    """用户在某个提问处按了 Ctrl+C / 输入流结束（EOF）。
+
+    以前这里直接 raise SystemExit(130)：在管道、CI、`install.sh | bash` 这类没有 TTY
+    的场景下，控制台会被「静默杀掉」，而不是取消当前操作。现在统一由 dispatch / 菜单
+    捕获——非交互干净退出（130，不带 traceback），交互菜单里回到菜单。
+    """
+
+
 def rule(title=''):
     line = '─' * 62
     print(col(B, '── %s %s' % (title, line[len(title) + 3:])) if title else col(D, line))
@@ -148,7 +157,8 @@ def ask(label, default=None, valid=None, hint='', allow_empty=False):
             v = input('  %s%s: ' % (label, col(D, tail))).strip()
         except (EOFError, KeyboardInterrupt):
             print()
-            raise SystemExit(130)
+            raise Cancelled()
+
         if not v and default:
             v = default
         if not v and allow_empty:
@@ -164,7 +174,7 @@ def confirm(label, default='n'):
         v = input('  %s [%s]: ' % (label, 'Y/n' if default == 'y' else 'y/N')).strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
-        raise SystemExit(130)
+        raise Cancelled()
     return (v or default) == 'y'
 
 
@@ -361,6 +371,31 @@ def panel_users(c):
                 '?node_id=%s&node_type=%s&token=%s' % (url, nid, nt, key)])
     try:
         return len(json.loads(s)['users'])
+    except Exception:
+        return None
+
+
+def panel_config(conf_path):
+    """按**指定配置文件**（主配置或实例配置）向面板拉节点 config；拉不到返回 None。
+
+    实例部署必须靠它拿到 server_port——拉不到就等于「不知道实例该监听哪个端口」，
+    以前会退化成用主实例端口判断，于是面板不可达时实例照样被报成 PASS（僵尸进程 + 白占内存）。
+    """
+    conf = Path(conf_path)
+    if not conf.is_file():
+        return None
+    url, nid, key = key_of(conf, 'webapi_url'), key_of(conf, 'node_id'), key_of(conf, 'webapi_key')
+    if not (url and nid and key):
+        return None
+    st = key_of(conf, 'server_type', 'vless')
+    nt = {'ss': 'shadowsocks', 'vless': 'vless', 'vmess': 'vmess'}.get(st, st)
+    rc, s = sh(['curl', '-sS', '--max-time', '20', '%s/api/v1/server/UniProxy/config'
+                '?node_id=%s&node_type=%s&token=%s' % (url.rstrip('/'), nid, nt, key)], timeout=45)
+    if rc != 0:
+        return None
+    try:
+        d = json.loads(s)
+        return d if isinstance(d, dict) else None
     except Exception:
         return None
 
@@ -729,6 +764,7 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
     bd = Path(ctx['bin_dir'])
     pkg = resolve_pkg(ctx)
     conf_path = Path(ctx['conf']) if main_inst else Path(ctx['inst_dir']) / ('%s.conf' % name)
+    conf_existed = conf_path.exists()
     svc = ctx['service'] if main_inst else '%s@%s' % (ctx['service'], name)
     soga_key = soga_key or secrets.token_hex(16)
     cert = cert or {}
@@ -831,6 +867,21 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
     if dry:
         step(i, n_steps, 'systemd 单元', 'skip', 'dry-run')
     else:
+        # 实例部署的前置硬校验：必须能从面板拉到节点 config（server_port 是实例的唯一端口来源）。
+        # 主实例允许面板暂时抽风（已有 listener 不受影响），实例不行——否则会起一个没端口的僵尸进程。
+        if not main_inst:
+            pc = panel_config(conf_path)
+            if not pc or not pc.get('server_port'):
+                step(i, n_steps, 'systemd 单元', 'fail',
+                     '面板接口拉不到节点 config / server_port（实例不会监听端口）')
+                warn('检查 webapi_url / webapi_key / node_id（%s）' % conf_path)
+                warn('若确认不要再这个实例：so-console inst remove %s --yes' % name)
+                if not conf_existed:
+                    try:
+                        conf_path.unlink(missing_ok=True)   # 没起过服务的失败部署不留半截配置
+                    except OSError:
+                        pass
+                return 3
         us = Path('/etc/systemd/system')
         for uname, tpl in UNITS.items():
             (us / uname).write_text(tpl.format(bin_dir=ctx['bin_dir'], inst_dir=ctx['inst_dir']),
@@ -883,12 +934,16 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
         # 等「业务端口真的 LISTEN」而不是「ss 有输出」（后者恒真，曾导致刚重启就判成功、
         # 紧接着 probe 全部握手失败）。就绪时间实测 10–19 s，最多等 60 s。
         port, waited = '', 0.0
+        # 实例的期望端口只来自它自己的面板 config；主实例才允许回落到「主服务实际监听/console.conf」。
+        expect = ''
+        if not main_inst:
+            expect = str((panel_config(conf_path) or {}).get('server_port') or '')
         for _ in range(40):
             time.sleep(1.5)
             waited += 1.5
             if svc_state(svc) != 'active':
                 continue
-            port = port_of_service(svc) or det_port(ctx)
+            port = port_of_service(svc) or (det_port(ctx) if main_inst else expect)
             if port and (':%s' % port) in out(['ss', '-lnt']):
                 break
         st, rs = svc_props(svc, 'ActiveState', 'NRestarts')
@@ -1033,7 +1088,14 @@ def wizard_target(ctx):
 # ══════════════════════════════════════════════════════════════ commands
 def cmd_install(c, a):
     wizard_key, cert = '', None
-    if getattr(a, 'node_id', None) and getattr(a, 'url', None):
+    has_args = bool(getattr(a, 'node_id', None) and getattr(a, 'url', None))
+    if not has_args and not sys.stdin.isatty():
+        # 管道 / CI / `curl … | bash` 场景没有 TTY：明确告知怎么给参数，别让向导读 EOF
+        bad('非交互模式必须给 --node-id 与 --url；'
+            '例：so-console install --node-id 12 --type ss --url https://panel.example.com '
+            '--webapi-key <面板的 webapi_key>')
+        return 2
+    if has_args:
         node_id, url = a.node_id, a.url.rstrip('/')
         stype = getattr(a, 'stype', None) or ('vless' if arch() == 'arm64' else 'ss')
         cert = cert_from_args(a, stype, c)
@@ -1102,6 +1164,9 @@ def cmd_status(c, _a):
 def cmd_service(c, a):
     act = getattr(a, 'action', None) or 'status'
     svc = c['service']
+    if act not in ('start', 'stop', 'restart', 'status'):
+        bad('用法：service start|stop|restart|status（收到 %s）' % act)
+        return 2
     if act == 'status':
         return cmd_status(c, a)
     head('%s %s' % (act, svc))
@@ -1150,6 +1215,11 @@ def cmd_probe(c, a):
             return 2
         n = str(cnt)
     script = probe_script(c)
+    if n in ('all', 'full') and sys.stdin.isatty():
+        total = panel_users(c)
+        if not confirm('probe all 会逐个用户真实握手%s，可能跑很久，继续？'
+                       % ('（面板 %d 个）' % total if total else '')):
+            return 0
     if script is None:
         bad('找不到 probe_many.py（先 so-console install，或放进 %s）' % c['bin_dir'])
         return 2
@@ -1296,7 +1366,11 @@ def cmd_inst(c, a):
             say(sh(['journalctl', '-u', sv, '-n', '80', '-o', 'cat'])[1].rstrip())
             return 0
         if act == 'remove':
-            if not confirm('确认删除实例 %s（停服 + 删配置）？' % name):
+            yes = getattr(a, 'yes', False)
+            if not yes and not sys.stdin.isatty():
+                bad('非交互删除要显式确认：so-console inst remove %s --yes' % name)
+                return 2
+            if not yes and not confirm('确认删除实例 %s（停服 + 删配置）？' % name):
                 return 0
             sh(['systemctl', 'disable', '--now', sv])   # --now 会同时 stop，不会留僵尸进程
             (d / ('%s.conf' % name)).unlink(missing_ok=True)
@@ -1311,7 +1385,14 @@ def cmd_inst(c, a):
 
 def cmd_logs(c, a):
     unit = getattr(a, 'unit', None) or c['service']
-    n = getattr(a, 'lines', None) or 100
+    lines = getattr(a, 'lines', None)
+    # 直觉问题：`so-console logs 20` 应该是「最后 20 行」，不是「unit 叫 20」。
+    # 只有一个纯数字参数时按行数处理；`logs soco-watchdog 40` 才是「unit + 行数」。
+    if unit.isdigit() and not lines:
+        unit, lines = c['service'], unit
+    if unit in ('main', c['service']):
+        unit = c['service']
+    n = lines or 100
     try:
         n = int(n)
     except (TypeError, ValueError):
@@ -1369,6 +1450,10 @@ def cmd_rollback(c, a):
             bad('备份文件不存在：%s' % pick)
             return 1
     else:
+        if not sys.stdin.isatty():
+            # 管道 / 脚本里没有「选择 #」这一步可交互；不给 --file 就会一直等 stdin（实测会挂到超时）
+            bad('非交互回滚要指定文件：so-console rollback --file <备份文件>')
+            return 2
         rows = [[i + 1, p.name, '%d KB' % (p.stat().st_size // 1024)] for i, p in enumerate(cands)]
         table(rows, ['#', '备份', '大小'])
         sel = ask('选择 #（回车取消）', default='', valid=r'\d*')
@@ -1499,8 +1584,10 @@ def conf_check(c, path=None, quiet=False):
                                                           'submit_interval', 'log_level')
                  if k in keys and keys.get(k) != FIXED[k]]
     if fixed_bad:
-        warn('固定项被改动（建议改回）：%s' % ', '.join('%s=%s→%s' % (k, a or '-', b)
-                                                   for k, a, b in fixed_bad))
+        # 注意：这里以前写的是 `k, a, b`，而 `a` 在 conf_check() 里不存在——
+        # 只要客户改了 type/api/间隔/log_level，conf check 就会 NameError 崩掉。
+        warn('固定项被改动（建议改回）：%s' % ', '.join('%s=%s→%s' % (k, cur or '-', want)
+                                                   for k, cur, want in fixed_bad))
     else:
         ok('固定项符合预期：type/api/间隔/log_level')
     return missing, extra, diff
@@ -1508,6 +1595,21 @@ def conf_check(c, path=None, quiet=False):
 
 def cmd_conf(c, a):
     path = Path(a.path or c['conf'])
+    if a.action == 'get':
+        # `conf get webapi_key`：键名可能落在 path 位置参数上（位置参数被 show/check 复用）
+        k = (getattr(a, 'key', None) or '').strip()
+        if a.path and not Path(a.path).is_file():
+            path = Path(c['conf'])            # 第一个位置参数不是文件 → 当作键名
+            k = k or a.path.strip()
+        if not k:
+            bad('用法：conf get <键名>（conf keys 可列出全部键）')
+            return 2
+        vals = parse_conf(path)
+        if k not in vals:
+            bad('%s 里没有键 %s' % (path, k))
+            return 1
+        print(vals[k])            # 完整值：本地运维要复制到面板时用（conf show 会脱敏）
+        return 0
     if a.action == 'show':
         if not path.is_file():
             bad('配置不存在：%s' % path)
@@ -1579,8 +1681,12 @@ def interactive(c):
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
-        if sel in ('0', 'q', 'quit', 'exit'):
+        low = sel.lower()
+        if low in ('0', 'q', 'quit', 'exit'):
             return 0
+        if low in ('?', 'h', 'help'):
+            print(USAGE)
+            continue
         if not sel:
             continue
         name = None
@@ -1590,15 +1696,23 @@ def interactive(c):
                     name = cmd_name
         if name is None:
             parts = sel.split()
-            name = parts[0] if parts else ''
+            name = parts[0].lower() if parts else ''
             argv = parts[1:]
         else:
             argv = []
         # 只有「需要参数」的命令才追问；回车 = 直接执行（以前回车会再问一次，导致同一条命令跑两遍）
         if name in NEEDS_ARG and not argv:
-            extra = input('  %s 参数（回车 = 交互/默认）: ' % name).split()
+            try:
+                extra = input('  %s 参数（回车 = 交互/默认）: ' % name).split()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 0
             argv = argv + extra
-        dispatch(c, name, argv)
+        try:
+            dispatch(c, name, argv)
+        except Cancelled:
+            print()
+            warn('已取消，回到菜单')
 
 
 # ══════════════════════════════════════════════════════════════ cli
@@ -1639,6 +1753,8 @@ def build_parser():
     pn.add_argument('--dns-provider')
     pn.add_argument('--dry-run', action='store_true')
     pn.add_argument('--no-probe', action='store_true')
+    pn.add_argument('--yes', '-y', action='store_true',
+                    help='非交互删除实例时显式确认（inst remove <名字> --yes）')
 
     ps = sub.add_parser('service', add_help=False)
     ps.add_argument('action', nargs='?', default='status',
@@ -1665,8 +1781,10 @@ def build_parser():
         sub.add_parser(name, add_help=False)
 
     pc = sub.add_parser('conf', add_help=False)
-    pc.add_argument('action', nargs='?', default='check', choices=['check', 'show', 'keys'])
+    pc.add_argument('action', nargs='?', default='check',
+                    choices=['check', 'show', 'keys', 'get'])
     pc.add_argument('path', nargs='?')
+    pc.add_argument('key', nargs='?')       # conf get <键名>（screen 上按位置填到 path 也行）
     return p
 
 
@@ -1677,11 +1795,12 @@ USAGE = """so-console %s · 一键部署与运维控制台
   修复：  so-console install                 （无参数 = 向导，等同重装/修复）
   多机场：so-console inst new jp1 --node-id 13 --type vless --url https://panel2 --webapi-key <key>
   TLS 证书：--cert-mode panel|self|file|http|dns [--cert-domain D] [--cert-file F --cert-key K] [--dns-provider P]
-  日常：  status / service restart / logs / users
+  日常：  status / service restart / logs / logs 50 / users
   验证：  probe 3 | probe all | gate | doctor | verify
-  配置：  conf check（与原版 soga 模板比对）| conf show | conf keys
+  配置：  conf check（与原版 soga 模板比对）| conf show | conf keys | conf get <键名>
   只读：  routes status | routes validate        （分流由其它程序负责）
   数据：  backup [--keep N] | rollback | paths
+  实例：  inst list | inst new <名字> … | inst restart <名字> | inst remove <名字> [--yes]
 
 谁填什么
   客户：节点 ID、协议、面板地址(webapi_url)、面板通信密钥(webapi_key，必须与面板一致)
@@ -1715,7 +1834,12 @@ def dispatch(c, name, argv):
         args = parser.parse_args([name] + list(argv))
     except SystemExit:
         return 2
-    return fn(c, args)
+    try:
+        return fn(c, args)
+    except Cancelled:
+        print()
+        warn('已取消（输入流结束 / Ctrl+C），没有做任何改动')
+        return 130
 
 
 def main():
