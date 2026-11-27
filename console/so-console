@@ -853,7 +853,12 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
         # 只 start 的话 systemd 认为它已在跑，新代码不会生效（曾因此 38443 一直不监听）
         sh(['systemctl', 'restart', 'soco-licence-sink.service'])
         sh(['systemctl', 'start', 'soco-sink-redirect.service'])
-        time.sleep(2)                     # 先让 sink / dnat 就位，再起主服务
+        # 等 sink 真的把 38443 绑上（刚 restart 时可能还在起），最多 12 s；
+        # 首次安装时 sink 刚 enable，restart 可能抢在 unit 就绪前，必须轮询而不是睡 2 s 就判死
+        for _ in range(15):
+            time.sleep(0.8)
+            if ':38443' in out(['ss', '-lnt']):
+                break
         if main_inst:
             sh(['systemctl', 'enable', 'soco-watchdog.service'])
             sh(['systemctl', 'enable', svc + '.service'])
