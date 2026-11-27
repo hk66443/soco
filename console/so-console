@@ -822,15 +822,10 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
                 f.write(''.join('\n127.0.0.1 %s\n' % h for h in missing))
         # sink 是否真的在监听 38443 —— 装完立刻验，别等到 doctor 才发现（曾经 sink.py 写死 443、
         # 单元却传 --listen 0.0.0.0:38443，结果服务 active 但端口根本没开，nft dnat 全落空）
-        sink_ok, sink_note = False, ''
-        for _ in range(10):
-            time.sleep(0.8)
-            if ':38443' in out(['ss', '-lnt']):
-                sink_ok = True
-                break
+        sink_ok, sink_note = sink_up, ''
         if not sink_ok:
             st = svc_state('soco-licence-sink')
-            sink_note = '；sink=%s 但 :38443 未监听' % st
+            sink_note = '；sink=%s 但 :38443 未监听（已重试 3 轮）' % st
             warn('sink 服务 %s，但 38443 没在监听 —— 检查 sink.py 是否忽略 --listen' % st)
             warn('看日志： so-console logs soco-licence-sink 40')
         step(i, n_steps, '授权 sink + hosts + nft', 'ok' if sink_ok else 'fail',
@@ -853,12 +848,21 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
         # 只 start 的话 systemd 认为它已在跑，新代码不会生效（曾因此 38443 一直不监听）
         sh(['systemctl', 'restart', 'soco-licence-sink.service'])
         sh(['systemctl', 'start', 'soco-sink-redirect.service'])
-        # 等 sink 真的把 38443 绑上（刚 restart 时可能还在起），最多 12 s；
-        # 首次安装时 sink 刚 enable，restart 可能抢在 unit 就绪前，必须轮询而不是睡 2 s 就判死
-        for _ in range(15):
-            time.sleep(0.8)
-            if ':38443' in out(['ss', '-lnt']):
+        # 等 sink 真的把 38443 绑上。首次安装时 unit 刚 enable，restart 可能返回非 0
+        # （Job for … canceled / unit not found 的竞态），所以「等不到就再 restart 一次」，
+        # 最多试 3 轮，每轮等 8 s —— 不能只看一次就判死。
+        sink_up = False
+        for attempt in range(3):
+            for _ in range(10):
+                time.sleep(0.8)
+                if ':38443' in out(['ss', '-lnt']):
+                    sink_up = True
+                    break
+            if sink_up:
                 break
+            if attempt < 2:
+                sh(['systemctl', 'daemon-reload'])
+                sh(['systemctl', 'restart', 'soco-licence-sink.service'])
         if main_inst:
             sh(['systemctl', 'enable', 'soco-watchdog.service'])
             sh(['systemctl', 'enable', svc + '.service'])
