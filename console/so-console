@@ -837,7 +837,10 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
                                     encoding='utf-8')
         sh(['systemctl', 'daemon-reload'])
         sh(['systemctl', 'enable', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
-        sh(['systemctl', 'start', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
+        # 先 restart 再 start：sink.py 可能刚被更新（修 bug 后重跑 install），
+        # 只 start 的话 systemd 认为它已在跑，新代码不会生效（曾因此 38443 一直不监听）
+        sh(['systemctl', 'restart', 'soco-licence-sink.service'])
+        sh(['systemctl', 'start', 'soco-sink-redirect.service'])
         time.sleep(2)                     # 先让 sink / dnat 就位，再起主服务
         if main_inst:
             sh(['systemctl', 'enable', 'soco-watchdog.service'])
