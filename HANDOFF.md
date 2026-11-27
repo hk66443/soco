@@ -106,7 +106,7 @@ $env:so**_SSH_PASSWORD='<REDACTED>'
 /usr/local/soco/
 ├── soco                    主程序（amd64: c463791a…；ARM: variantE 549ef746…）
 ├── libsoco.so              适配器（amd64 2f60b5f8…；ARM 单独编译版）
-├── soco-watchdog.py        watchdog（PROBE_EVERY/FAILS_TO_RESTART/PREEMPT_SECONDS 由 unit 注入；amd 有）
+├── soco-watchdog.py        watchdog（统一版：按 server_type 自适应 SS2022 / VLESS+REALITY；PROBE_EVERY/FAILS_TO_RESTART/PREEMPT_SECONDS 由 unit 注入）
 ├── soco-mesh.py            mesh 中继（已停用，AMD 上遗留孤儿实例 2026-11-25 已清）
 └── licence/{sink.py,sink_38443.py,cert.pem,key.pem,sink-redirect.nft}   本地授权端点（sink，38443）
 
@@ -117,7 +117,7 @@ $env:so**_SSH_PASSWORD='<REDACTED>'
 ├── soco-licence-sink.service  0.0.0.0:38443 sink（Restart=always）
 ├── soco-sink-redirect.service nft: 127.0.0.1:443 dnat → 38443（443 已让出，可跑网站/证书）
 ├── soco-routes-guard.path/.service  routes.toml 守卫（nfu 覆盖后自动补回 Netflix/OpenAI → TW）
-├── soco-watchdog.service   真实 VLESS/REALITY 握手探活，连续 3 次失败重启（ARM；amd 为 SS2022 版）
+├── soco-watchdog.service   真实握手探活（协议自适应），连续 3 次失败重启（2026-11-27 起两台同用统一版）
 └── soco-mesh.service       备选架构（当前 stopped）
 
 /etc/so**/                  配置与流媒体目录（与 so** 完全一致，nfu 直接可用）

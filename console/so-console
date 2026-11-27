@@ -820,18 +820,11 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
         if missing:
             with Path('/etc/hosts').open('a') as f:
                 f.write(''.join('\n127.0.0.1 %s\n' % h for h in missing))
-        # sink 是否真的在监听 38443 —— 装完立刻验，别等到 doctor 才发现（曾经 sink.py 写死 443、
-        # 单元却传 --listen 0.0.0.0:38443，结果服务 active 但端口根本没开，nft dnat 全落空）
-        sink_ok, sink_note = sink_up, ''
-        if not sink_ok:
-            st = svc_state('soco-licence-sink')
-            sink_note = '；sink=%s 但 :38443 未监听（已重试 3 轮）' % st
-            warn('sink 服务 %s，但 38443 没在监听 —— 检查 sink.py 是否忽略 --listen' % st)
-            warn('看日志： so-console logs soco-licence-sink 40')
-        step(i, n_steps, '授权 sink + hosts + nft', 'ok' if sink_ok else 'fail',
-             'hosts +%d, sink 38443%s' % (len(missing), sink_note))
-        if not sink_ok:
-            failed_sink = True
+        # sink 38443 的真实验证放在下一步（systemd 单元）之后：那一步才写单元并启动 sink。
+        # 这里曾直接读「后一步才赋值」的 sink_up，导致首装/修复一律在 [4/7] 抛
+        # UnboundLocalError —— 单元永远写不出来、服务永远起不来（2026-11-27 现网事故）。
+        step(i, n_steps, '授权 sink + hosts + nft', 'ok',
+             'hosts +%d（sink 38443 与 nft dnat 在下一步启动并验证）' % len(missing))
 
     i += 1
     step(i, n_steps, 'systemd 单元', 'run')
@@ -872,7 +865,15 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
             sh(['systemctl', 'enable', svc + '.service'])
             sh(['systemctl', 'restart', svc + '.service'])
         cfg_save(ctx)
-        step(i, n_steps, 'systemd 单元', 'ok', '5 个单元 / daemon-reload')
+        if sink_up:
+            step(i, n_steps, 'systemd 单元', 'ok', '5 个单元 / daemon-reload / sink 38443')
+        else:
+            failed_sink = True
+            step(i, n_steps, 'systemd 单元', 'fail',
+                 '单元已写入，但 sink :38443 未监听（已重试 3 轮）')
+            warn('sink 服务 %s，但 38443 没在监听 —— 检查 sink.py 是否忽略 --listen'
+                 % svc_state('soco-licence-sink'))
+            warn('看日志： so-console logs soco-licence-sink 40')
 
     i += 1
     step(i, n_steps, '启动与状态', 'run')

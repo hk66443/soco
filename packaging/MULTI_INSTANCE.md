@@ -175,7 +175,7 @@ systemctl daemon-reload && systemctl restart soco
 |---|---|
 | `/usr/bin/so**` | 兼容入口：`so** restart/stop/start/log/config/status/list` 全部转到 soco（nfu 最后一步是 `sudo so** restart`） |
 | `soco-routes-guard.path` + `.service` | 监听 `/etc/so**/routes.toml`：nfu 用模板覆盖后，自动把「Netflix/OpenAI → 台湾出口」补丁插回（幂等、避开 nfu 半截写入、追加空行触发 soco 热加载） |
-| `soco-watchdog.service` | ARM：每 30 s 真实 VLESS/REALITY 握手探活，连续 3 次失败重启 soco（详见 `arm64/evidence/NFU_COMPAT_20261125.md`） |
+| `soco-watchdog.service` | 任一架构：每 30 s 真实握手探活（按 `server_type` 自动选 SS2022 / VLESS+REALITY），连续 3 次失败重启 soco（详见 `arm64/evidence/NFU_COMPAT_20261125.md`） |
 
 `nfu so**` 的实际动作（读 nfu.sh）：
 
