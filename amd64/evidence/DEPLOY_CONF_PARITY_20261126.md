@@ -155,7 +155,40 @@ so-console routes status
 
 ---
 
-## 5. 遗留 / 下一步
+## 5. 交互层 / 逻辑层专项复查（2026-11-27）
+
+第一轮只验了「部署流程 + 配置一致性」，交互与代码逻辑没系统过一遍。本轮逐函数读代码 + 写回归测试
+（`_ops/test_console_ux.py`，本地 mock；`_ops/test_console_e2e3.sh`，两台真机），修掉 **10 个**缺陷：
+
+| # | 缺陷 | 现象 | 修法 |
+|---|---|---|---|
+| U1 | `table()` 空表崩溃 | `inst list` 无实例时 `max()` 对空序列抛 `ValueError` | 空 rows 直接 return |
+| U2 | 交互菜单回车会再问一次参数 | 同一条命令**跑两遍**（`9` 回车 → doctor 执行 2 次） | 只有 `NEEDS_ARG` 里的命令才追问；回车 = 直接执行 |
+| U3 | 无参命令也被要求输参数 | 选 `doctor`/`conf`/`status` 都要多按一次回车 | 同上（`NEEDS_ARG` 白名单） |
+| U4 | 向导里「面板密钥」无法留空 | `ask()` 的 `default` 为空时回车死循环 → 只能 Ctrl-C | `ask(allow_empty=True)`，回车返回空 = 走随机生成 |
+| U5 | `inst new` 非交互缺参数 | 直接抛 `SystemExit(130)`，脚本里表现为「静默退出」 | 非 tty 时明确报错 + 退出码 2 |
+| U6 | `inst <act>` 不校验实例存在 | 对不存在的实例 start/stop/log 只报 systemd 噪音 | 先查 `<name>.conf`，不存在直接报错 |
+| U7 | `backup` 写死 `/root` | 目录不存在 → `FileNotFoundError` 崩；且不可测 | 支持 `SO_BACKUP_DIR`，目录不可写时明确报错 |
+| U8 | `rollback` 选号越界 | 输 `99` → `IndexError`；输 `abc` 走 argparse 崩 | 越界/非数字都拦，给范围提示；加二次确认；解包失败保持停服并报错 |
+| U9 | `probe 0` / `probe -1` 直接透传 | 把非法数量丢给 `probe_many.py` | 先校验正整数或 `all` |
+| U10 | `logs soco abc` | argparse `type=int` 直接 `SystemExit` | 自己解析并报错；`main()` 保证返回 int 退出码 |
+
+另外两处顺手加固：
+- `du -h` 解析改为 `human_size()`（文件不存在时返回 `-`，不再把报错整行当大小）；
+- `inst remove` 用 `systemctl disable --now`（同时 stop，不留僵尸进程）。
+
+**回归结果（两台真机一致）**
+
+```
+inst new 缺参数 rc=2 / probe 0 rc=2 / probe -1 rc=2 / logs abc rc=2 / conf check rc=0 / doctor rc=0 / 未知命令 rc=2
+菜单 1–15 每个命令执行次数 = 1（probe/logs 回车与显式参数都是 1 次）
+菜单 4(service) 回车 = status，PID 前后一致（未被重启）
+本地 mock 测试 20 项全 PASS；配置一致性 31 项全 PASS
+```
+
+---
+
+## 6. 遗留 / 下一步
 
 1. **AMD 侧 routes.toml 是空模板（0 条）**，本机不做流媒体分流，与 ARM 的 11 条不同属预期；
    若要把 AMD 也接流媒体，按 `arm64/evidence/STREAM_NF_MATRIX_20261125.md` 的模板填。
@@ -163,3 +196,5 @@ so-console routes status
    （`NRestarts=0`、握手 3/3、用户数不降）；`log_level=error` 后日志量已显著下降。
 3. 24 小时长稳（`probe_mesh_v2.py --duration 86400`）仍未做，见 HANDOFF §7.2。
 4. 多实例 `soco@.service` 已补 `SOCO_INSTANCE`，但未在本次复测中做双实例并发压测。
+5. `backup` 打包的是整个 `bin_dir`（含 82 MB 二进制），单份约 69 MB（AMD）/117 MB（ARM）；
+   如需轻量备份可加 `--no-bin`（尚未实现）。

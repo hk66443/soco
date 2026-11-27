@@ -245,7 +245,7 @@ systemctl restart soco.service
 1. **24 小时长稳**：现在只有 30 min（隔离台）+ 45 min（线上 soak）。建议挂 `probe_mesh_v2.py --duration 86400 --every 60`。
 2. ~~**部署流程 + 配置一致性复测**~~ **（2026-11-26 完成）**：AMD/ARM 均 `install 7/7 PASS`、
    `so**.conf` 与原版模板逐行一致（41 键 / 63 行）、probe 3/3、用户数 498 对齐；
-   修掉 6 个缺陷（含公开包 so-console 语法错误、覆盖式写入丢客户配置、log_level=error 后本地人数不可读）。
+   修掉 6 个缺陷（含公开包 so-console 语法错误、覆盖式写入丢客户配置、log_level=error 后本地人数不可读）；2026-11-27 又做了一轮**交互层/逻辑层**复查，再修 10 个（菜单回车重复执行、空表崩溃、rollback 越界、backup 写死 /root 等）。
    见 [amd64/evidence/DEPLOY_CONF_PARITY_20261126.md](amd64/evidence/DEPLOY_CONF_PARITY_20261126.md)。
 3. ~~**纯二进制旁路**~~ **（2026-11-24 已完成，amd64 侧仍走 hosts+sink）**：
    - ARM 侧已闭合：`variantC = variantB + 10 处补丁`，100 用户数据面实测通过、200 用户也通；
@@ -281,5 +281,6 @@ systemctl restart soco.service
 | 多实例隔离与 so\*\* 目录统一（含实测数据） | `arm64/evidence/MULTI_INSTANCE_20261125.md`、`packaging/MULTI_INSTANCE.md` |
 | 流媒体分流：NF 各节点能力矩阵与 TW 修复 | `arm64/evidence/STREAM_NF_MATRIX_20261125.md`、`_ops/routes_tw_patch.toml` |
 | 部署流程 + 配置与原版模板一致性（两台 7/7 PASS、41 键、probe 3/3） | `amd64/evidence/DEPLOY_CONF_PARITY_20261126.md`、`_ops/test_conf_parity.py` |
+| 交互层/逻辑层 10 个缺陷与回归（菜单只执行一次、退出码、backup/rollback） | 同上 §5、`_ops/test_console_ux.py`、`_ops/test_console_e2e3.sh` |
 | nfu / so\*\* 生态兼容 + 路由守卫 + watchdog（含停摆演练） | `arm64/evidence/NFU_COMPAT_20261125.md`、`packaging/routes-guard.py`、`packaging/soco-watchdog.py` |
 | 安装/更新与多实例管理脚本 | `packaging/install-soco.sh`、`packaging/soco-multi.sh`、`packaging/soco@.service` |

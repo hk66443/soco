@@ -131,7 +131,8 @@ def step(i, n, name, state='', note=''):
 
 
 def table(rows, headers):
-    cols = [str(h) for h in headers] + [str(x) for r in rows for x in r]
+    if not rows:                          # 空表直接返回：否则 max() 对空序列抛 ValueError
+        return
     widths = [max(_w(str(r[i])) for r in [headers] + rows) for i in range(len(headers))]
     print('  ' + '  '.join(col(B, _pad(str(h), widths[i])) for i, h in enumerate(headers)))
     print('  ' + '  '.join(col(D, '─' * widths[i]) for i in range(len(headers))))
@@ -139,9 +140,10 @@ def table(rows, headers):
         print('  ' + '  '.join(_pad(str(r[i]), widths[i]) for i in range(len(headers))))
 
 
-def ask(label, default=None, valid=None, hint=''):
+def ask(label, default=None, valid=None, hint='', allow_empty=False):
+    """问一个值。allow_empty=True 时回车直接返回空串（用于「留空 = 自动」的项）。"""
     while True:
-        tail = ' [%s]' % default if default else ''
+        tail = ' [%s]' % default if default else (' [回车=自动]' if allow_empty else '')
         try:
             v = input('  %s%s: ' % (label, col(D, tail))).strip()
         except (EOFError, KeyboardInterrupt):
@@ -149,6 +151,8 @@ def ask(label, default=None, valid=None, hint=''):
             raise SystemExit(130)
         if not v and default:
             v = default
+        if not v and allow_empty:
+            return ''
         if v and (valid is None or re.fullmatch(valid, v)):
             return v
         if v:
@@ -378,6 +382,15 @@ def port_of_service(svc):
             if m:
                 return m.group(1)
     return ''
+
+
+def human_size(path):
+    """du -h 的大小字段；文件不存在时返回 '-'（不能直接 split('\\t')[0]，否则拿到整行）。"""
+    p = Path(path)
+    if not p.is_file():
+        return '-'
+    s = out(['du', '-h', str(p)])
+    return s.split('\t')[0].strip() if '\t' in s else (s.strip() or '-')
 
 
 def key_of(path, name, default=''):
@@ -750,7 +763,7 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
                 os.chmod(dst, mode)
         if pkg != Path(ctx['pkg']):
             ctx['pkg'] = str(pkg)      # 记住实际项目目录，后续命令都好使
-    step(i, n_steps, '目录与二进制', 'ok', 'soco %s' % (out(['du', '-h', str(bd / 'soco')]).split('\t')[0] or ''))
+    step(i, n_steps, '目录与二进制', 'ok', 'soco %s' % human_size(bd / 'soco'))
 
     i += 1
     step(i, n_steps, '写入配置（主控信息 + 证书）', 'run')
@@ -954,8 +967,8 @@ def wizard_target(ctx):
               hint='形如 https://panel.example.com')
     url = url.rstrip('/')
     say('  webapi_key = 面板节点详情里那串「通信密钥」，必须与面板一致（不能随机）')
-    key = ask('面板密钥 webapi_key', valid=r'\S{6,}',
-              hint='粘贴面板里的那串（至少 6 位、无空格）')
+    key = ask('面板密钥 webapi_key', valid=r'\S{6,}', allow_empty=True,
+              hint='粘贴面板里的那串（至少 6 位、无空格）；直接回车 = 本机随机生成，装完再回填面板')
     cert = ask_cert(stype)
     say('')
     kv('固定：type', '%s / api=%s' % (FIXED['type'], FIXED['api']))
@@ -1074,6 +1087,17 @@ def cmd_users(c, _a):
 
 
 def cmd_probe(c, a):
+    n = str(getattr(a, 'count', None) or '3')
+    if n not in ('all', 'full'):
+        try:
+            cnt = int(n)
+        except ValueError:
+            bad('数量只能是正整数或 all：%s' % n)
+            return 2
+        if cnt < 1:
+            bad('数量必须 ≥ 1（收到 %d）' % cnt)
+            return 2
+        n = str(cnt)
     script = probe_script(c)
     if script is None:
         bad('找不到 probe_many.py（先 so-console install，或放进 %s）' % c['bin_dir'])
@@ -1082,8 +1106,7 @@ def cmd_probe(c, a):
         bad('找不到探测客户端（sing-box-probe），放在 %s/sing-box-probe 后重试（DEPLOY.md §2.1）'
             % c['bin_dir'])
         return 2
-    n = getattr(a, 'count', None) or '3'
-    cmd = ['python3', '-u', str(script), 'all' if n in ('all', 'full') else str(n)]
+    cmd = ['python3', '-u', str(script), n]
     if getattr(a, 'idx', None):
         cmd.append(a.idx)
     head('真实握手  %s' % ' '.join(cmd[2:]))
@@ -1180,7 +1203,15 @@ def cmd_inst(c, a):
         return 0
     if act in ('new', 'deploy'):
         head('新增实例')
-        name = getattr(a, 'name', None) or ask('实例名', valid=r'[a-z0-9_]{2,16}', hint='小写字母/数字/_')
+        name = getattr(a, 'name', None)
+        if not name:
+            if not sys.stdin.isatty():
+                bad('非交互模式必须给实例名：so-console inst new <名字> --node-id N --type T --url U --webapi-key K')
+                return 2
+            name = ask('实例名', valid=r'[a-z0-9_]{2,16}', hint='小写字母/数字/_')
+        if not re.fullmatch(r'[a-z0-9_]{2,16}', name):
+            bad('实例名只能是小写字母/数字/_，2–16 位：%s' % name)
+            return 2
         if (d / ('%s.conf' % name)).exists():
             bad('实例 %s 已存在（先 inst remove 或换名字）' % name)
             return 1
@@ -1188,6 +1219,9 @@ def cmd_inst(c, a):
             node_id, stype, url = a.node_id, getattr(a, 'stype', None) or 'ss', a.url.rstrip('/')
             wkey, cert = '', cert_from_args(a, stype, c)
         else:
+            if not sys.stdin.isatty():
+                bad('非交互模式必须给 --node-id 与 --url（或去掉参数走交互向导）')
+                return 2
             node_id, stype, url, wkey, cert = wizard_target(c)
         key = getattr(a, 'webapi_key', None) or wkey or secrets.token_hex(16)
         key_src = 'panel' if (getattr(a, 'webapi_key', None) or wkey) else 'auto'
@@ -1196,8 +1230,16 @@ def cmd_inst(c, a):
                       dry=getattr(a, 'dry_run', False),
                       probe_after=not getattr(a, 'no_probe', False), key_src=key_src)
     if act in ('start', 'stop', 'restart', 'log', 'remove', 'enable', 'disable'):
-        name = getattr(a, 'name', None) or ask('实例名', valid=r'[a-z0-9_]{2,16}')
+        name = getattr(a, 'name', None)
+        if not name:
+            if not sys.stdin.isatty():
+                bad('非交互模式必须给实例名：so-console inst %s <名字>' % act)
+                return 2
+            name = ask('实例名', valid=r'[a-z0-9_]{2,16}')
         sv = inst_service(c, name)
+        if not (d / ('%s.conf' % name)).exists() and act not in ('enable', 'disable'):
+            bad('实例 %s 不存在（so-console inst list）' % name)
+            return 1
         if act == 'log':
             head('实例日志 %s' % name)
             say(sh(['journalctl', '-u', sv, '-n', '80', '-o', 'cat'])[1].rstrip())
@@ -1205,7 +1247,7 @@ def cmd_inst(c, a):
         if act == 'remove':
             if not confirm('确认删除实例 %s（停服 + 删配置）？' % name):
                 return 0
-            sh(['systemctl', 'disable', '--now', sv])
+            sh(['systemctl', 'disable', '--now', sv])   # --now 会同时 stop，不会留僵尸进程
             (d / ('%s.conf' % name)).unlink(missing_ok=True)
             ok('已删除 %s' % name)
         else:
@@ -1218,9 +1260,17 @@ def cmd_inst(c, a):
 
 def cmd_logs(c, a):
     unit = getattr(a, 'unit', None) or c['service']
-    n = str(getattr(a, 'lines', None) or 100)
-    head('日志 %s（最后 %s 行）' % (unit, n))
-    say(sh(['journalctl', '-u', unit, '-n', n, '-o', 'cat'])[1].rstrip() or '(空)')
+    n = getattr(a, 'lines', None) or 100
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        bad('行数必须是整数：%s' % n)
+        return 2
+    if n < 1:
+        bad('行数必须 ≥ 1')
+        return 2
+    head('日志 %s（最后 %d 行）' % (unit, n))
+    say(sh(['journalctl', '-u', unit, '-n', str(n), '-o', 'cat'])[1].rstrip() or '(空)')
     return 0
 
 
@@ -1228,44 +1278,68 @@ def cmd_backup(c, a):
     head('备份')
     keep = getattr(a, 'keep', None)
     ts = time.strftime('%Y%m%d-%H%M%S')
-    dst = Path('/root/so-backup-%s.tar.gz' % ts)
-    with tarfile.open(dst, 'w:gz') as t:
-        for p in (c['bin_dir'], c['inst_dir']):
-            if Path(p).exists():
-                t.add(p)
+    outdir = Path(os.environ.get('SO_BACKUP_DIR') or '/root')
+    try:
+        outdir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        bad('备份目录不可写：%s（%s）' % (outdir, e))
+        return 1
+    dst = outdir / ('so-backup-%s.tar.gz' % ts)
+    try:
+        with tarfile.open(dst, 'w:gz') as t:
+            for p in (c['bin_dir'], c['inst_dir']):
+                if Path(p).exists():
+                    t.add(p)
+    except (OSError, tarfile.TarError) as e:
+        bad('打包失败：%s' % e)
+        return 1
     ok('%s（%d KB）' % (dst, dst.stat().st_size // 1024))
     if keep:
-        olds = sorted(Path('/root').glob('so-backup-*.tar.gz'))
+        olds = sorted(outdir.glob('so-backup-*.tar.gz'))
         for old in olds[:-int(keep)] if int(keep) > 0 else []:
             old.unlink(missing_ok=True)
             kv('已清理', old.name)
-    left = sorted(Path('/root').glob('so-backup-*.tar.gz'))
-    kv('现有备份', '%d 个' % len(left))
+    left = sorted(outdir.glob('so-backup-*.tar.gz'))
+    kv('现有备份', '%d 个（%s）' % (len(left), outdir))
     return 0
 
 
 def cmd_rollback(c, a):
     head('回滚')
-    cands = sorted(Path('/root').glob('so-backup-*.tar.gz'))
+    outdir = Path(os.environ.get('SO_BACKUP_DIR') or '/root')
+    cands = sorted(outdir.glob('so-backup-*.tar.gz'))
     if not cands:
-        bad('没有备份')
+        bad('没有备份（%s）' % outdir)
         return 1
     pick = None
     if getattr(a, 'file', None):
         pick = Path(a.file)
+        if not pick.is_file():
+            bad('备份文件不存在：%s' % pick)
+            return 1
     else:
         rows = [[i + 1, p.name, '%d KB' % (p.stat().st_size // 1024)] for i, p in enumerate(cands)]
         table(rows, ['#', '备份', '大小'])
         sel = ask('选择 #（回车取消）', default='', valid=r'\d*')
         if not sel:
             return 0
-        pick = cands[int(sel) - 1]
+        n = int(sel)
+        if n < 1 or n > len(cands):          # 越界必须拦，否则 IndexError 直接崩
+            bad('编号超出范围：%s（1–%d）' % (sel, len(cands)))
+            return 2
+        pick = cands[n - 1]
+    if not confirm('确认用 %s 覆盖当前 %s 与配置目录？' % (pick.name, c['bin_dir'])):
+        return 0
     sh(['systemctl', 'stop', c['service']])
-    with tarfile.open(pick, 'r:gz') as t:
-        try:
-            t.extractall('/', filter='data')
-        except TypeError:                     # python < 3.12
-            t.extractall('/')
+    try:
+        with tarfile.open(pick, 'r:gz') as t:
+            try:
+                t.extractall('/', filter='data')
+            except TypeError:                     # python < 3.12
+                t.extractall('/')
+    except (OSError, tarfile.TarError) as e:
+        bad('解包失败：%s（服务保持停止，请手动处理）' % e)
+        return 3
     sh(['systemctl', 'start', c['service']])
     ok('已恢复 %s' % pick.name)
     return cmd_status(c, a)
@@ -1279,7 +1353,7 @@ def cmd_verify(c, _a):
         f = bd / n
         if f.is_file():
             h = out(['sha256sum', str(f)])[:16]
-            kv(n, '%s  %s' % (h, out(['du', '-h', str(f)]).split('\t')[0]))
+            kv(n, '%s  %s' % (h, human_size(f)))
         else:
             bad('%s 缺失' % n)
     (ok if ps else bad)('握手探测脚本 %s' % (str(ps) if ps else '缺失（so-console install）'))
@@ -1407,6 +1481,9 @@ def cmd_conf(c, a):
 
 
 # ══════════════════════════════════════════════════════════════ menu
+# 菜单里「必须带参数」的命令：只有它们才在选中后追问一行参数
+NEEDS_ARG = {'inst', 'service', 'probe', 'logs', 'routes', 'rollback'}
+
 MENU = [
     ('deploy', [
         ('1', 'install', '部署 / 修复本机节点（向导：只填 ID、协议、面板）'),
@@ -1466,7 +1543,8 @@ def interactive(c):
             argv = parts[1:]
         else:
             argv = []
-        if name in ('install', 'inst', 'service', 'probe', 'logs', 'routes', 'rollback'):
+        # 只有「需要参数」的命令才追问；回车 = 直接执行（以前回车会再问一次，导致同一条命令跑两遍）
+        if name in NEEDS_ARG and not argv:
             extra = input('  %s 参数（回车 = 交互/默认）: ' % name).split()
             argv = argv + extra
         dispatch(c, name, argv)
@@ -1521,7 +1599,7 @@ def build_parser():
 
     pl = sub.add_parser('logs', add_help=False)
     pl.add_argument('unit', nargs='?')
-    pl.add_argument('lines', nargs='?', type=int)
+    pl.add_argument('lines', nargs='?')          # 不交给 argparse 转 int：否则非法值直接 SystemExit
 
     pr = sub.add_parser('routes', add_help=False)
     pr.add_argument('action', nargs='?', default='status', choices=['status', 'show', 'validate'])
@@ -1595,7 +1673,8 @@ def main():
         c['arch'] = arch()
     if len(sys.argv) == 1:
         return interactive(c)
-    return dispatch(c, sys.argv[1], sys.argv[2:])
+    rc = dispatch(c, sys.argv[1], sys.argv[2:])
+    return rc if isinstance(rc, int) else 0
 
 
 if __name__ == '__main__':
