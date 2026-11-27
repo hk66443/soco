@@ -409,11 +409,22 @@ def resolve_pkg(c):
 
 
 def probe_script(c):
-    for p in (Path(c['bin_dir']) / 'probe_many.py', resolve_pkg(c) / '_ops' / 'probe_many.py',
-              resolve_pkg(c) / 'probe_many.py', Path('/root/soco-pkg/probe_many.py')):
-        if p.is_file():
-            return p
-    return None
+    """探针脚本：优先用**最新的**一份。
+
+    bin_dir 里的是 install 拷的运行副本，pkg/_ops 里的是随一键命令更新的源码；
+    只认 bin_dir 会让「项目已更新但没重新 install」的机器一直跑旧探针（ARM 上实测过）。
+    """
+    cands = [Path(c['bin_dir']) / 'probe_many.py',
+             resolve_pkg(c) / '_ops' / 'probe_many.py',
+             resolve_pkg(c) / 'probe_many.py',
+             Path('/root/soco-pkg/probe_many.py')]
+    have = [p for p in cands if p.is_file()]
+    if not have:
+        return None
+    try:
+        return max(have, key=lambda p: p.stat().st_mtime)
+    except OSError:
+        return have[0]
 
 
 def elf_machine(path):

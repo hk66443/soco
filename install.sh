@@ -98,5 +98,37 @@ else
     say "== 二进制已存在（${BIN_DIR}），跳过下载（SO_FORCE_BIN=1 可强制覆盖）"
 fi
 
+# ── 3. 同步运行期脚本（探针 / watchdog / 路由守卫 / licence sink）───────────
+# 只拉项目不更新这几支脚本的话，机器上跑的永远是第一次 install 时拷进去的旧版
+# （ARM 上实测：console 已是新版，probe_many.py 还是旧的）。旧文件先备份。
+if [ -d "${BIN_DIR}" ]; then
+    synced=0
+    for pair in \
+        "${DEST}/_ops/probe_many.py|${BIN_DIR}/probe_many.py" \
+        "${DEST}/packaging/soco-watchdog.py|${BIN_DIR}/soco-watchdog.py" \
+        "${DEST}/packaging/routes-guard.py|${BIN_DIR}/routes-guard.py" \
+        "${DEST}/amd64/src/licence-sink.py|${BIN_DIR}/licence/sink.py"; do
+        src="${pair%%|*}"; dst="${pair##*|}"
+        [ -f "$src" ] || continue
+        mkdir -p "$(dirname "$dst")" 2>/dev/null || true
+        if [ -f "$dst" ] && cmp -s "$src" "$dst"; then continue; fi
+        if [ -f "$dst" ]; then
+            cp -a "$dst" "$dst.bak.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
+        fi
+        if install -m 755 "$src" "$dst"; then
+            say "   同步 $(basename "$dst")"
+            synced=$((synced+1))
+        else
+            say "   !! 同步失败（权限/只读？）：$dst"
+        fi
+    done
+    if [ "$synced" = "0" ]; then
+        say "== 运行期脚本已是最新"
+    fi
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet soco-watchdog 2>/dev/null; then
+        say "   （watchdog 已更新，新的探针逻辑在 systemctl restart soco-watchdog 后生效）"
+    fi
+fi
+
 say "== 进入控制台（菜单里选 1 install 开始安装）"
 exec "${DEST}/console/so-console" "$@"
