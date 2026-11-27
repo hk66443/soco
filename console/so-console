@@ -294,17 +294,45 @@ def service_start_epoch(svc):
     return time.time() - (now_mono - mono / 1_000_000.0)
 
 
-def _user_num_from_logfiles(svc='soco'):
-    """从 soco 自己的文件日志里取最后一条 current user num。
-    log_level=error 时 journal 里不再有 INFO 行（这是刻意的，只记错误），
-    但文件日志（/etc/soga/{soga,so}-*.log）里可能还留着历史快照 —— 只作兜底并标注时间。
-    目录按「soco 自己的日志优先」顺序找，避免读到 syslog 转发副本（daemon.log）造成误判。
+def _line_epoch(ln):
+    """日志行时间戳 → epoch。支持 soco 自己的 `2026/11/27 03:35:24` 与 syslog 的 `Nov 27 03:35:24`。
 
-    ⚠ 只认**本次启动之后**写的行：soco 重启时不会清空日志文件，旧数字（比如换机器前的 498）
-    会被当成当前值读出来。所以先取文件里最后一条 `init log file` 的时间，只在其之后找。
+    解析不出来返回 None（宁可不采信，也不把历史数字当当前值）。
+    """
+    m = re.match(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})[ T](\d{1,2}):(\d{2}):(\d{2})', ln)
+    if m:
+        try:
+            return time.mktime((int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                                int(m.group(4)), int(m.group(5)), int(m.group(6)), 0, 0, -1))
+        except (ValueError, OverflowError):
+            return None
+    m = re.match(r'([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2})', ln)
+    if m:
+        try:
+            mon = time.strptime(m.group(1), '%b').tm_mon
+            now = time.localtime()
+            y = now.tm_year - (1 if mon > now.tm_mon else 0)
+            return time.mktime((y, mon, int(m.group(2)), int(m.group(3)),
+                                int(m.group(4)), int(m.group(5)), 0, 0, -1))
+        except (ValueError, OverflowError):
+            return None
+    return None
+
+
+def _user_num_from_logfiles(svc='soco'):
+    """从 soco 自己的文件日志里取最后一条 current user num（**只作历史参考**）。
+    log_level=error 时 journal 里不再有 INFO 行（这是刻意的，只记错误），
+    但文件日志（/etc/soga/{soga,so}-*.log）里可能还留着历史快照。
+
+    ⚠ 只认**本次启动之后**写的行：
+      · 文件 mtime 早于本次启动 → 整份跳过（soga 按天切分，重启不重写）；
+      · 行首时间戳必须能解析且不早于本次启动 → 否则跳过（syslog 副本 daemon.log 会被 mtime
+        骗过：文件一直在写，但里面那条 498 是昨天的）。
+    `/var/log` 里的 syslog 转发副本（daemon.log / syslog）不采信——那是同一批行的副本，
+    出现过「daemon.log 里 Nov 26 03:03:37 的 498 被当成当前人数」的假告警。
     """
     start_epoch = service_start_epoch(svc)
-    for d in ('/etc/soga', '/usr/local/soco', '/var/log'):
+    for d in ('/etc/soga', '/usr/local/soco'):
         p = Path(d)
         if not p.is_dir():
             continue
@@ -326,8 +354,13 @@ def _user_num_from_logfiles(svc='soco'):
             hits = []
             for ln in lines[start:]:
                 m = re.search(r'current user num:\s*(\d+)', ln)
-                if m:
-                    hits.append((m.group(1), ln[:19]))
+                if not m:
+                    continue
+                ts_epoch = _line_epoch(ln)
+                if start_epoch is not None:
+                    if ts_epoch is None or ts_epoch < start_epoch - 60:
+                        continue        # 时间不明或早于本次启动：不采信
+                hits.append((m.group(1), ln[:19]))
             if hits:
                 n, ts = hits[-1]
                 return n, str(f), ts
