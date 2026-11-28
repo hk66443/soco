@@ -476,6 +476,10 @@ systemctl restart soco.service
     `bash <(curl …)` 装机时 `/root/so/install.sh` **永远是第一次那份**（实测 pull 完还是
     `bdaf9f2c…`），现在只有「正在执行的就是 `$DEST/install.sh`」时才排除，否则照样覆盖
     → 实测 pull 完 `70c91ae7…` 与远端一致。
+    两个「碰系统文件」的 shell 逻辑用**抽取原文**的方式在机器上离线验证（`_ops/r14_shell_verify_20261128.sh`，
+    只碰 /tmp）：① `uninstall.sh` 第 4 节的 hosts 清理——6 行样例跑完只剩 4 行（本项目 2 条删掉、
+    注释里出现的域名保留、`::1 localhost` 与 `internal.example` 保留、`.hosts.*` 无残留）；
+    ② `soco-multi.sh` 的 `set_kv`——值里带 `|` 与 `&` 逐字写入，不再被 sed 的「整段匹配」顶掉。
 
 ---
 
