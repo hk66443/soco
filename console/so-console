@@ -568,8 +568,9 @@ def reuse_or_new_soga_key(a, conf_path):
 UNITS = {
     'soco.service': """[Unit]
 Description=soco node (managed by so-console)
-After=network-online.target
-Wants=network-online.target
+# 授权 sink 必须先就位：sink 没起来时 soco 启动阶段会撞上 600 s 授权检查（历史停摆 641 s）
+After=network-online.target soco-licence-sink.service
+Wants=network-online.target soco-licence-sink.service
 
 [Service]
 Type=simple
@@ -589,7 +590,8 @@ WantedBy=multi-user.target
 """,
     'soco@.service': """[Unit]
 Description=soco node instance %i (managed by so-console)
-After=network-online.target
+After=network-online.target soco-licence-sink.service
+Wants=soco-licence-sink.service
 
 [Service]
 Type=simple
