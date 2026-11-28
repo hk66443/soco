@@ -88,6 +88,18 @@ so-console install --node-id 12 --type ss --url https://panel.example.com --no-p
 
 `install` 幂等：**重复执行 = 修复**（配置重写、证书补齐、hosts 缺哪条补哪条、单元重装、服务重启）。
 
+### 1.3 日志级别与本地人数（`--log-level`）
+
+```bash
+so-console install ... --log-level info    # 写审计流水；`users` 才能拿本地人数和面板对照
+so-console install ... --log-level error   # 默认：只记错误、省磁盘；本地人数显示 '-'
+```
+
+- 切级别要重启 soco（配置启动时读一次），约 10–20 s 掉线；
+- 控制台会把单元的 `LogLevelMax` 一起设好（`info` 时放开，否则 journal 侧过滤掉 INFO 行，照样读不到）；
+- 重装不会把客户选的 `info` 压回 `error`（`write_conf` 保留已有级别，显式 `--log-level` 才会改）；
+- 日志量实测约 1–3 KB/min/节点（60 s 一条 `current user num` 加连接级 INFO）。
+
 ---
 
 ## 2. 多机场（一台机多个实例）
