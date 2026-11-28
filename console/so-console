@@ -7,7 +7,7 @@
   · **配置文件结构与原版 soga 2.18.1 模板逐行一致**（字段、顺序、注释分节全同）；
     install 是「合并写入」：客户在原版上已开的 dy_limit / redis_ip_limit / proxy_protocol
     等取值会保留，模板外的自定义键原样带走，不会被重装清掉。`conf check` 可审计差异。
-  · 日志固定只记错误（log_level=error），不刷审计流水。
+  · 日志默认只记错误（log_level=error），不刷审计流水；要看本地人数用 --log-level info。
   · 流媒体分流由其它程序负责，本控制台只做「只读查看」。
   · install 幂等：重复执行 = 修复。
 
@@ -52,6 +52,10 @@ FIXED = {                               # 固定参数：客户不需要填，�
     'submit_interval': '60',
     'log_level': 'error',
 }
+# 允许的日志级别：
+#   error（默认）— 只记错误，不刷审计流水、省磁盘；代价是本地人数读不到（没有 INFO 行）
+#   info         — 会写审计流水，`users` 才能拿本地人数与面板对照；磁盘占用随之上升
+LOG_LEVELS = ('error', 'info')
 PROTOS = {
     '1': ('ss', 'Shadowsocks 2022（无证书）'),
     '2': ('vless', 'VLESS（REALITY 由面板下发 / 或自备证书）'),
@@ -549,6 +553,12 @@ def key_of(path, name, default=''):
     return default
 
 
+def level_of(path):
+    """配置里的日志级别（只认 error/info，其它值一律当 error）。"""
+    v = key_of(path, 'log_level', FIXED['log_level'])
+    return v if v in LOG_LEVELS else FIXED['log_level']
+
+
 def reuse_or_new_soga_key(a, conf_path):
     """soga_key 幂等：--soga-key > 已有配置里的值 > 随机。
 
@@ -583,7 +593,7 @@ Restart=always
 RestartSec=5
 LimitNOFILE=1048576
 LimitNPROC=1048576
-LogLevelMax=warning
+LogLevelMax={log_max}
 
 [Install]
 WantedBy=multi-user.target
@@ -603,7 +613,7 @@ Restart=always
 RestartSec=5
 LimitNOFILE=1048576
 LimitNPROC=1048576
-LogLevelMax=warning
+LogLevelMax={log_max}
 
 [Install]
 WantedBy=multi-user.target
@@ -763,7 +773,8 @@ def parse_conf(path):
     return d
 
 
-def write_conf(path, node_id, stype, url, key, soga_key, cert=None, inst_name='main', merge=True):
+def write_conf(path, node_id, stype, url, key, soga_key, cert=None, inst_name='main', merge=True,
+               log_level=None):
     """写主控/机场配置文件：**结构与原版 soga 2.18.1 模板逐行一致**。
 
     key      = webapi_key（面板通信密钥，必须与面板一致，客户填）
@@ -780,7 +791,7 @@ def write_conf(path, node_id, stype, url, key, soga_key, cert=None, inst_name='m
         'webapi_url': url, 'webapi_key': key,
         'check_interval': FIXED['check_interval'],
         'submit_interval': FIXED['submit_interval'],
-        'log_level': FIXED['log_level'],
+        'log_level': log_level if log_level in LOG_LEVELS else FIXED['log_level'],
         'cert_mode': '', 'cert_domain': '', 'cert_file': '', 'key_file': '', 'dns_provider': '',
     })
     cmode = (cert or {}).get('mode') or ''
@@ -800,6 +811,10 @@ def write_conf(path, node_id, stype, url, key, soga_key, cert=None, inst_name='m
         for k in CONF_OPTIONAL:                 # 客户已开的功能：保留原值
             if old.get(k, '') != '':
                 vals[k] = old[k]
+        if log_level not in LOG_LEVELS:
+            # 没显式指定就沿用客户已选的级别：info 不会被一次重装静默压回 error
+            if old.get('log_level', '') in LOG_LEVELS:
+                vals['log_level'] = old['log_level']
         for k, v in old.items():                # 模板之外的键：原样带走
             if k not in tkeys and k not in CONF_MANAGED:
                 extras.append('%s=%s' % (k, v))
@@ -868,18 +883,20 @@ def preflight_warn(ctx):
 
 
 def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', yes=False, dry=False,
-           probe_after=True, key_src='panel'):
+           probe_after=True, key_src='panel', log_level=None):
     """幂等部署 / 修复。name='main' 部署主实例，其余部署 soco@<name> 实例。
 
     key      = webapi_key（面板通信密钥，客户给，必须与面板一致）
     soga_key = 授权密钥（随便写；控制台随机生成）
     cert     = {'mode','domain','cert_file','key_file','dns_provider'}（非 TLS 可为 None）
+    log_level= error|info（None = 沿用已有配置里的级别，没有就 error）
     """
     n_steps = 7
     main_inst = (name == 'main')
     bd = Path(ctx['bin_dir'])
     pkg = resolve_pkg(ctx)
     conf_path = Path(ctx['conf']) if main_inst else Path(ctx['inst_dir']) / ('%s.conf' % name)
+    lvl = log_level if log_level in LOG_LEVELS else level_of(conf_path)
     conf_existed = conf_path.exists()
     svc = ctx['service'] if main_inst else '%s@%s' % (ctx['service'], name)
     soga_key = soga_key or secrets.token_hex(16)
@@ -949,7 +966,7 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
             bak = Path(str(conf_path) + '.bak.%s' % time.strftime('%Y%m%d%H%M%S'))
             warn('%s 已存在，先备份 %s，再按原版模板合并写入' % (conf_path, bak.name))
             shutil.copy2(conf_path, bak)
-        write_conf(conf_path, node_id, stype, url, key, soga_key, cert)
+        write_conf(conf_path, node_id, stype, url, key, soga_key, cert, log_level=lvl)
         kept = [k for k in CONF_OPTIONAL
                 if bak and parse_conf(bak).get(k, '') not in ('', CONF_OPTIONAL[k])]
         step(i, n_steps, '写入配置（主控信息 + 证书）', 'ok',
@@ -1006,9 +1023,13 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
                         pass
                 return 3
         us = Path('/etc/systemd/system')
+        # journal 里的 INFO 行由 systemd 侧过滤：log_level=info 时 LogLevelMax 必须跟着放开，
+        # 否则 even with info，console 也读不到 current user num（本地人数永远 '-'）
+        log_max = 'warning' if lvl == 'error' else 'info'
         for uname, tpl in UNITS.items():
-            (us / uname).write_text(tpl.format(bin_dir=ctx['bin_dir'], inst_dir=ctx['inst_dir']),
-                                    encoding='utf-8')
+            (us / uname).write_text(
+                tpl.format(bin_dir=ctx['bin_dir'], inst_dir=ctx['inst_dir'], log_max=log_max),
+                encoding='utf-8')
         sh(['systemctl', 'daemon-reload'])
         sh(['systemctl', 'enable', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
         # 先 restart 再 start：sink.py 可能刚被更新（修 bug 后重跑 install），
@@ -1229,7 +1250,7 @@ def wizard_target(ctx):
     say('')
     kv('固定：type', '%s / api=%s' % (FIXED['type'], FIXED['api']))
     kv('固定：间隔', 'pull/push %ss' % FIXED['check_interval'])
-    kv('固定：日志', 'log_level=%s（只记错误）' % FIXED['log_level'])
+    kv('固定：日志', 'log_level=%s（只记错误；要看本地人数就加 --log-level info）' % FIXED['log_level'])
     kv('固定：soga_key', '随机生成（本工程不校验授权）')
     kv('固定：闸门', 'hosts + 本地 sink(38443) + nft dnat')
     return node_id, stype, url, key, cert
@@ -1285,7 +1306,8 @@ def cmd_install(c, a):
         ok('沿用已有 soga_key（重跑不会换授权密钥）')
     return deploy(c, node_id, stype, url, key, soga_key=soga_key, cert=cert, name=name,
                   dry=getattr(a, 'dry_run', False),
-                  probe_after=not getattr(a, 'no_probe', False), key_src=key_src)
+                  probe_after=not getattr(a, 'no_probe', False), key_src=key_src,
+                  log_level=getattr(a, 'log_level', None))
 
 
 def cert_from_args(a, stype, c):
@@ -1379,9 +1401,13 @@ def cmd_users(c, _a):
         bad('面板接口失败（查 webapi_url / webapi_key / 网络）')
         return 1
     kv('面板（UniProxy）', '%d 个用户' % n)
+    lvl = level_of(c['conf'])
     if local == '-':
-        warn('本地人数读不到（log_level=error 不写 INFO 行）；面板侧 %d 个用户，'
-             '要看本地对照就把 log_level 改成 info 再重启' % n)
+        if lvl == 'info':
+            warn('log_level=info 已开，但还没读到 INFO 行（刚重启？）——等一个 check_interval（60 s）再看')
+        else:
+            warn('本地人数读不到（log_level=error 不写 INFO 行）；面板侧 %d 个用户；'
+                 '要本地对照就带 --log-level info 重装一次（会重启 soco，约 15 s）' % n)
     elif lsrc.startswith('journal'):
         if local == str(n):
             ok('对照一致（本地实时）')
@@ -1391,7 +1417,7 @@ def cmd_users(c, _a):
     else:
         # 历史快照不能当"本地人数"去和面板比 —— 以前会因此报出一条假的「不一致」
         warn('本地只有历史快照（%s），不参与一致性判断；面板侧 %d 个。'
-             '要实时对照就把 log_level 改成 info 再重启' % (lsrc, n))
+             '要实时对照就带 --log-level info 重装（会重启 soco）' % (lsrc, n))
     return 0
 
 
@@ -1589,7 +1615,8 @@ def cmd_inst(c, a):
             ok('沿用已有 soga_key（重跑不会换授权密钥）')
         return deploy(c, node_id, stype, url, key, soga_key=soga_key, cert=cert, name=name,
                       dry=getattr(a, 'dry_run', False),
-                      probe_after=not getattr(a, 'no_probe', False), key_src=key_src)
+                      probe_after=not getattr(a, 'no_probe', False), key_src=key_src,
+                      log_level=getattr(a, 'log_level', None))
     if act in ('start', 'stop', 'restart', 'log', 'remove', 'enable', 'disable'):
         name = getattr(a, 'name', None)
         if not name:
@@ -1876,7 +1903,11 @@ def cmd_doctor(c, _a):
         ('适配层 libsoco.so', (bd / 'libsoco.so').is_file(), '同上'),
         ('节点配置', Path(c['conf']).is_file(), 'so-console install'),
         ('配置与原版模板一致', not miss, 'so-console install（conf check 看差异）'),
-        ('配置 log_level=error', key_of(c['conf'], 'log_level') == 'error', 'so-console install'),
+        ('配置 log_level（error/info）', level_of(c['conf']) in LOG_LEVELS,
+         'so-console install --log-level error|info'),
+        ('本地人数可读（info 时）',
+         level_of(c['conf']) != 'info' or last_user_num(c['service']) != '-',
+         '刚重启？等一个 check_interval（60 s）再看'),
         ('主服务 active', svc_state(c['service']) == 'active', 'so-console service start'),
         ('业务端口监听', bool(det_port(c)) and ':' + det_port(c) in out(['ss', '-lnt']), '看配置/日志'),
         ('sink active', svc_state('soco-licence-sink') == 'active', 'so-console install'),
@@ -2076,16 +2107,22 @@ def conf_check(c, path=None, quiet=False):
         warn('%d 个可选键已偏离原版默认（客户自定义，install 会保留）：' % len(diff))
         for k, cur, dft in diff:
             print('    %-26s %s（原版默认 %s）' % (k, cur or '(空)', dft))
-    fixed_bad = [(k, keys.get(k, ''), FIXED[k]) for k in ('type', 'api', 'check_interval',
-                                                          'submit_interval', 'log_level')
+    fixed_keys = ('type', 'api', 'check_interval', 'submit_interval')
+    fixed_bad = [(k, keys.get(k, ''), FIXED[k]) for k in fixed_keys
                  if k in keys and keys.get(k) != FIXED[k]]
+    lvl = keys.get('log_level', FIXED['log_level'])
+    if lvl not in LOG_LEVELS:                 # 只认 error/info；其它值才算改坏
+        fixed_bad.append(('log_level', lvl, FIXED['log_level']))
     if fixed_bad:
         # 注意：这里以前写的是 `k, a, b`，而 `a` 在 conf_check() 里不存在——
         # 只要客户改了 type/api/间隔/log_level，conf check 就会 NameError 崩掉。
         warn('固定项被改动（建议改回）：%s' % ', '.join('%s=%s→%s' % (k, cur or '-', want)
                                                    for k, cur, want in fixed_bad))
     else:
-        ok('固定项符合预期：type/api/间隔/log_level')
+        ok('固定项符合预期：type/api/间隔')
+    if lvl == 'info':
+        say('  日志级别 log_level=info（允许的选项）：会写审计流水，本地人数可读；'
+            '磁盘吃紧可改回 error')
     return missing, extra, diff
 
 
@@ -2235,6 +2272,8 @@ def build_parser():
     pi.add_argument('--cert-file')
     pi.add_argument('--cert-key')
     pi.add_argument('--dns-provider')
+    pi.add_argument('--log-level', dest='log_level', choices=list(LOG_LEVELS),
+                    help='error（默认，只记错误）/ info（写审计流水，本地人数可读）')
     pi.add_argument('--name', default='main')
     pi.add_argument('--dry-run', action='store_true')
     pi.add_argument('--no-probe', action='store_true')
@@ -2253,6 +2292,8 @@ def build_parser():
     pn.add_argument('--cert-file')
     pn.add_argument('--cert-key')
     pn.add_argument('--dns-provider')
+    pn.add_argument('--log-level', dest='log_level', choices=list(LOG_LEVELS),
+                    help='error（默认）/ info（本地人数可读）')
     pn.add_argument('--dry-run', action='store_true')
     pn.add_argument('--no-probe', action='store_true')
     pn.add_argument('--yes', '-y', action='store_true',
@@ -2316,7 +2357,7 @@ USAGE = """so-console %s · 一键部署与运维控制台
   客户：节点 ID、协议、面板地址(webapi_url)、面板通信密钥(webapi_key，必须与面板一致)
   TLS 协议额外选：证书方式 panel|self|file|http|dns
   自动：soga_key（授权密钥，本工程不校验）、证书落盘、hosts/nft/单元/端口/验证
-  固定：type=xboard api=webapi 间隔 60s log_level=error（只记错误）
+  固定：type=xboard api=webapi 间隔 60s；日志默认 log_level=error（--log-level info 才能读本地人数）
 
 配置文件：/etc/soga/soga.conf（机场/主控信息都在这）；so-console paths 可查真实路径
 证书细节：CONFIG.md §3
