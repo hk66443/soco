@@ -1,4 +1,4 @@
-# 交互控制台加固 + 清空重装全流程实测（2026-11-27 UTC）
+﻿# 交互控制台加固 + 清空重装全流程实测（2026-11-27 UTC）
 
 > 现场：`AMD_IP`（amd64）。起点是「把机器上的 soco/so\*\* 全部删干净，再用公开仓库的一键命令重装，
 > 验证正常与否」。同时做了一轮交互控制台的冒烟与加固（非交互 30+ 命令 / 交互菜单 15 项 / 边界输入）。
@@ -242,6 +242,16 @@ ARM 复测：`users` 显示「本地 -（不可读）/ 面板 297」，不再出
 
 | 81 | **脚本审计第 2 轮：7 个真缺陷（装机器 / 守卫 / 授权 sink 这一面）** | ① `routes-guard` 原来取「全文第一个 `password=`」：trojan/vmess 出站排在 ss 前面时补丁拿到别的出站的密码 → 注入的 ss 出站认证必败 → **分流静默失效**；② 授权 sink 单线程 accept + 逐个握手，一个连上不发数据的客户端（扫描器/半开连接）就把后面全堵住，so\*\* 每 600 s 的授权检查跟着「挂住」→ 正好落进 600 s 闸门的停摆形态；③ 一键 `install.sh` 的 `find … \| head -1` 在 `pipefail` 下遇 SIGPIPE（find 141）会**无提示退出**，解包/复制失败还会漏 `/var/tmp/so-src.*`，缺 `python3` 要到 `exec` 才报错；④ `soco-uninstall` 只停 `soco.service`/`soco@.service`，watchdog / sink / sink-redirect / routes-guard 全留着，hosts 4 条与 nft 链也不清 → 卸完 **DNS 仍指向 127.0.0.1**（客户别的软件跟着坏）、38443 还占着、watchdog 还在拉 soco；⑤ `soco update` 的 `mktemp -d` 从不删（每更新一次留一份含二进制目录），`soco uninstall` 同样残留，`set_kv` 算好转义却没用（值含 `&`/`\|` 写坏配置）；⑥ `install-soco.sh` 失败分支把 HTTP 下载的 80 MB 二进制留在 `/tmp`；⑦ `so-console install` 不装 routes 守卫而 `uninstall` 会删 → 干净装机后 nfu 一重生成 routes.toml，TW 分流被冲掉且不报错 | routes-guard `6a499fee…` / sink `0c0d0b17…` / `install.sh` `526b36e9…` / `uninstall.sh` `4501b97d…` / `soco-multi.sh` `714783f7…` / `install-soco.sh` `cb6bbab8…` / console `17fc0f22…`：按 `[[routes.Outs]]` 分块只取 ss 块的 password（`has_ss_outbound` 仍全文匹配，只决定跳过/重试）；sink 每连接一线程 + 64 路信号量 + 独立超时（槽位满即 close，仍是快速失败）；`find -print -quit` + 全部临时目录 `trap` 收 + 开工前拦 `python3`；卸载按序停（watchdog 先）、只删本项目单元与 `.wants` 链接、hosts 临时文件 + `mv` 原子写回只删本项目域名、nft 只删自己的链/表；`soco update`/`install-soco.sh` 临时目录同样 `trap` 收；console 装 `soco-routes-guard.service`+`.path` 并 `enable+start`，`doctor` 加「routes 守卫 active」（**16 → 17 项**）。单测新增 `tools/test_routes_guard_units.py` 31 项 + `tools/test_sink_units.py` 14 项，console 39 → **45** 项，四套共 103 项全绿、pyflakes 干净 |
 
+| 82 | **部署复验又照出 2 个（`cd5d6e4` + `82410df`）** | ① 两台机器上 `soco-routes-guard.path/.service` **实际都不存在**（`LoadState=not-found`），§3 里"已在"是重装前状态 —— 也就是说干净装机和重装后，nfu 一覆盖 routes.toml 就没有守卫了（正是 81-⑦ 的现场版）；② `install.sh` 一律 `--exclude=./install.sh`，用 `bash <(curl …)` 装机时 `/root/so/install.sh` **永远是第一次那份**（实测 pull 完仍是上一轮 `bdaf9f2c…`），用户下次直接跑本机那份就会踩回 `find \| head` 的 SIGPIPE 坑 | ① 按 `packaging/` 的单元补装 + `daemon-reload` + `enable --now soco-routes-guard.path`（等价于 console install 的动作），两台 `active`，手工跑一次守卫 → `routes file missing, skip`（routes.toml 仍是待办 17/79，用户说先不动；守卫已武装）；`doctor` 新行立刻从 ✘ 变 ✔；② `install.sh` 改成「只有正在执行的就是 `$DEST/install.sh` 时才排除」，否则照常覆盖（`82410df`，`70c91ae7…`）→ 实测 pull 完本机 `install.sh` 与远端逐字节一致 |
+
+**第 2 轮部署复验（两台，2026-11-28）**：`bash -n` 7 个 shell 全 OK、`py_compile` OK；文件 hash 与
+`_push` 逐字节一致（console `17fc0f22` / `install.sh` `70c91ae7` / routes-guard `6a499fee` / sink
+`0c0d0b17` / uninstall `4501b97d` / multi `714783f7` / install-soco `cb6bbab8`，`bin_dir` 里的
+`routes-guard.py`、`licence/sink.py` 同步刷新）；只重启 `soco-licence-sink`（38443 LISTEN ok，
+打 443 证书校验 **0.01–0.02 s** 失败 = 设计上的快速失败），**soco PID 未变**
+（AMD `506373` / ARM `2587316`，`NRestarts=0`）；`doctor` **17/17 ✔**、`probe 3/3`（AMD `type=ss`
+:49989 / ARM `type=vless` :49999）、五单元全 active、`users` 本地 297 = 面板 297。
+
 **现场事故记录**：验证 43/45 时把 `/tmp` 塞爆了（历史残留 `tmp.A6ehG0A5ks` 111 M、
 `sing-box*` 三份 256 M、`bk4` 67 M、`x86pkg.tgz` 38 M …… 合计 482 M 占满 tmpfs），
 `probe` 直接 `OSError: [Errno 28]`。清理后恢复 2/2。这也正是 43/44/47 的由来 ——
@@ -267,3 +277,10 @@ ARM 复测：`users` 显示「本地 -（不可读）/ 面板 297」，不再出
   `_ops/nft_priority_align_20261128.sh`（AMD 删链重建 + dnat 握手验证）、
   `_ops/arm_routes_readonly_20261128.sh` / `_ops/arm_routes_sources_20261128.sh`（ARM 分流只读盘点，未改动）
 - 审计第 1 轮：`_ops/apply_r13_20261128.sh`（一键命令 + 同步三个文件 + 只重启 watchdog + probe/doctor 复验）
+- 审计第 2 轮：`_ops/apply_r14b_20261128.sh`（一键命令 + 9 个文件 hash + `bash -n` 7 个 shell +
+  `py_compile` + 只重启授权 sink + 443 证书校验计时 + 补装 routes 守卫单元并手工跑一次 +
+  `doctor`/`probe`/服务总览）。**注意**：第一版 `_ops/apply_r14_20261128.sh` 里的 443 探测用了
+  `CERT_NONE`（不校验证书），会"握手成功"——那不是 sink 的问题，so\*\* 是校验证书的；已换成默认上下文，
+  两台实测 0.01–0.02 s 失败。
+- 单测：`tools/test_routes_guard_units.py`（31 项）、`tools/test_sink_units.py`（14 项）、
+  `tools/test_console_units.py`（45 项）、`tools/test_probe_units.py`（13 项）

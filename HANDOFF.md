@@ -28,6 +28,7 @@
 | 已装工具 | `strace 6.13`、`gcc`、`python3.13`、`/tmp/sing-box`（探测客户端）、`/usr/local/soco/sing-box-probe`（全量探针客户端） |
 | 497 全量 | **497/497 通过**（2026-11-25 12:12–12:32 UTC，串行 1178 s，服务端 497 authenticated / 497 relayed / 0 auth failed，`NRestarts=0`）→ [amd64/evidence/AMD_497_FULL_20261125.md](amd64/evidence/AMD_497_FULL_20261125.md) |
 | 11-27 清空后重装 | **修复 2 个缺陷后 7/7 PASS**：`soco` active `:49989`、sink `38443`、watchdog 统一版（0 假重启）、`doctor` 16/16 ✔、`probe 3/3` → [amd64/evidence/DEPLOY_REGRESSION_FIX_20261127.md](amd64/evidence/DEPLOY_REGRESSION_FIX_20261127.md) |
+| 11-28 审计第 2 轮 | **再修 8 个缺陷后 `doctor` 17/17 ✔**：`bash -n` 7 个 shell 全 OK、授权 sink 改线程化（打 443 证书校验 **0.02 s** 失败）、routes 守卫**补装**并 active、`probe 3/3`、`users` 297=297、**soco PID `506373` 未变**（`NRestarts=0`）→ [amd64/evidence/CLEAN_INSTALL_CONSOLE_HARDENING_20261127.md](amd64/evidence/CLEAN_INSTALL_CONSOLE_HARDENING_20261127.md) 第 81/82 条 |
 
 ### 1.2b 第二台：ARM（aarch64，流媒体节点）
 
@@ -44,6 +45,7 @@
 | 关键坑 | ① routes 是带 `{Out}/{OutPort}/{UUID}` 占位符的模板，写坏会让 routes 退回 0 且**静默**；② 面板 uuid `<REDACTED-PANEL-UUID>…` ≠ NF 密码 `<REDACTED-NF-PASSWORD>…` |
 | 操作 | 换地区：`/usr/local/bin/switch_stream_area.sh us|hk|tw|jp|kr|sg|uk` |
 | 11-27 同步升级 | console `0d312ad9…` → **`cfe40087…`**（一键命令覆盖更新，0 s）；`soco-watchdog.py` 换成统一版 `f544137a…`（`probe_ok type=vless server_port=49999`）；`doctor` 16/16 ✔、`conf check` 41/41、`probe 3/3`、`gate` 全 ✔、PID 2543124 全程未变 |
+| 11-28 审计第 2 轮 | console `cfe40087…` → **`17fc0f22…`**（含 17 项 doctor）；`bash -n` 7 个 shell OK、sink 线程化（443 证书校验 **0.01 s** 失败）、routes 守卫**补装**并 active（`routes file missing, skip` —— routes.toml 仍是待办 17/79）、`probe 3/3`、`users` 297=297、**PID `2587316` 全程未变**（`NRestarts=0`） |
 | 复盘 | 见 [arm64/evidence/ARM_STREAM_ROUTES_FIX_20261123.md](arm64/evidence/ARM_STREAM_ROUTES_FIX_20261123.md) |
 
 ### 1.2c 部署流程与配置一致性复测（2026-11-26）
@@ -459,6 +461,21 @@ systemctl restart soco.service
     tmp 不残留）、`tools/test_sink_units.py`（14 项：`--listen` 解析、槽位归还、握手失败/成功都关连接、
     死 socket 不漏异常）；console 39 → **45 项**（+6：守卫单元与 `.path` 监听路径）。四套共 103 项全绿，
     pyflakes 干净。
+    **部署实测（两台，`cd5d6e4` + `82410df`）**：`bash -n` 7 个 shell 全 OK、`py_compile` OK；
+    文件 hash 与 `_push` 逐字节一致（console `17fc0f22…`、`install.sh` `70c91ae7…`、
+    routes-guard `6a499fee…`、sink `0c0d0b17…`、uninstall `4501b97d…`、multi `714783f7…`、
+    install-soco `cb6bbab8…`，`bin_dir` 里的 `routes-guard.py` / `licence/sink.py` 同步刷新）；
+    只重启 `soco-licence-sink`（38443 LISTEN ok，打 443 证书校验 **0.01–0.02 s** 失败 = 快速失败），
+    **soco PID 未变**（AMD `506373` / ARM `2587316`，`NRestarts=0`）；
+    `doctor` **17/17 ✔**、`probe 3/3`、五单元全 active、`users` 本地 297 = 面板 297。
+    顺带发现并补上第 8 个：**两台机器上 `soco-routes-guard.path/.service` 其实都不存在**
+    （HANDOFF §3 写的"已在"是重装前的状态），`doctor` 新加的那一行立刻把它照出来；已按
+    `packaging/` 里的单元补装并 `enable --now`，手工跑一次守卫 = `routes file missing, skip`
+    （两台 `routes.toml` 仍是第 17/79 条那个待办，用户说先不动）——守卫已武装，等文件回来就生效。
+    另修 `install.sh` 的自覆盖判定（`82410df`）：原来一律 `--exclude=./install.sh`，用
+    `bash <(curl …)` 装机时 `/root/so/install.sh` **永远是第一次那份**（实测 pull 完还是
+    `bdaf9f2c…`），现在只有「正在执行的就是 `$DEST/install.sh`」时才排除，否则照样覆盖
+    → 实测 pull 完 `70c91ae7…` 与远端一致。
 
 ---
 
