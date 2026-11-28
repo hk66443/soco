@@ -72,7 +72,7 @@ so-console install
   [2/7] 目录与二进制        ········ PASS  soco 92M
   [3/7] 写入配置（固定参数）  ········ PASS  log_level=error
   [4/7] 授权 sink + hosts + nft  PASS  hosts +4, sink 38443
-  [5/7] systemd 单元       ········ PASS  5 个单元 / daemon-reload
+  [5/7] systemd 单元       ········ PASS  7 个单元 / daemon-reload
   [6/7] 启动与状态          ········ PASS  pid=12345 restarts=0 port=49989
   [7/7] 真实握手验证        ········ PASS  TOTAL ok=3/3
 ```
@@ -233,9 +233,10 @@ so-console uninstall --yes --purge   # 非交互（脚本里必须显式给 --ye
 - 先停并禁用所有本项目单元（含 `soco@<实例>`），再按 `/proc/<pid>/exe` 杀残留进程
   —— 不用 `pkill -f`：模式串会出现在自己的命令行里，把自己也杀掉；
 - 删单元文件、`bin_dir`、项目目录、watchdog 日志、`/var/tmp` 下的探针临时目录；
-- `/etc/hosts` 只删本项目加的 4 条授权域名；`ip soco_sink` / `ip nat` 两张表一并删除；
-- 默认保留 `/etc/so**`（`so**.conf` / `routes.toml` / 证书），重装可沿用；
-- 非 tty 又没给 `--yes` → rc=2，且**什么都不动**（实测：units 4→4、二进制仍在、进程 PID 未变）。
+- `/etc/hosts` 只删本项目加的 4 条授权域名；nft 只删本项目自己的 `ip nat redir` 链与遗留的 `ip soco_sink` 表
+  —— **不删整张 `ip nat`**：docker / iptables-nft / 防火墙的 NAT 链也在那张表里；
+- **默认保留 `/etc/so**`**（`so**.conf` / `routes.toml` / 证书），重装可沿用；
+- 非 tty 又没给 `--yes` → rc=2，且**什么都不动**（线上实测：units 4→4、二进制仍在、soco PID 未变）。
 
 ---
 

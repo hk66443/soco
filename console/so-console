@@ -661,9 +661,30 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 """,
+    # routes.toml 守卫：nfu / soga 重生成 routes.toml 会把 Netflix/OpenAI 的 TW 分流冲掉。
+    # 以前这两个单元只有 packaging/install-soco.sh 装得上，so-console install 不装，
+    # 但 uninstall 又会删——干净装机后分流被覆盖就**静默失效**。现在两边对称。
+    'soco-routes-guard.service': """[Unit]
+Description=soco routes guard (re-apply Netflix/OpenAI TW route after nfu regenerates routes.toml)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 {bin_dir}/routes-guard.py
+Nice=5
+""",
+    'soco-routes-guard.path': """[Unit]
+Description=watch {inst_dir}/routes.toml for nfu/soga rewrites
+
+[Path]
+PathModified={inst_dir}/routes.toml
+Unit=soco-routes-guard.service
+
+[Install]
+WantedBy=paths.target
+""",
 }
 UNITS_ORDER = ['soco-licence-sink.service', 'soco-sink-redirect.service',
-               'soco.service', 'soco-watchdog.service']
+               'soco-routes-guard.path', 'soco.service', 'soco-watchdog.service']
 
 
 # ══════════════════════════════════════════════════════════════ deploy core
@@ -1031,7 +1052,12 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
                 tpl.format(bin_dir=ctx['bin_dir'], inst_dir=ctx['inst_dir'], log_max=log_max),
                 encoding='utf-8')
         sh(['systemctl', 'daemon-reload'])
-        sh(['systemctl', 'enable', 'soco-licence-sink.service', 'soco-sink-redirect.service'])
+        sh(['systemctl', 'enable', 'soco-licence-sink.service', 'soco-sink-redirect.service',
+            'soco-routes-guard.path'])
+        # .path 单元 enable 不等于 active：不 start 就没人盯着 routes.toml
+        rg_rc, _ = sh(['systemctl', 'start', 'soco-routes-guard.path'])
+        if rg_rc != 0:
+            warn('routes 守卫没起来（rc=%d）：nfu 覆盖 routes.toml 后 TW 分流不会自动补回' % rg_rc)
         # 先 restart 再 start：sink.py 可能刚被更新（修 bug 后重跑 install），
         # 只 start 的话 systemd 认为它已在跑，新代码不会生效（曾因此 38443 一直不监听）
         sh(['systemctl', 'restart', 'soco-licence-sink.service'])
@@ -1061,7 +1087,7 @@ def deploy(ctx, node_id, stype, url, key, soga_key='', cert=None, name='main', y
             sh(['systemctl', 'restart', svc + '.service'])
         cfg_save(ctx)
         if sink_up:
-            step(i, n_steps, 'systemd 单元', 'ok', '5 个单元 / daemon-reload / sink 38443')
+            step(i, n_steps, 'systemd 单元', 'ok', '%d 个单元 / daemon-reload / sink 38443' % len(UNITS))
         else:
             failed_sink = True
             step(i, n_steps, 'systemd 单元', 'fail',
@@ -1910,6 +1936,9 @@ def cmd_doctor(c, _a):
         ('sink active', svc_state('soco-licence-sink') == 'active', 'so-console install'),
         ('sink 38443', ':38443' in out(['ss', '-lnt']), 'so-console install'),
         ('nft dnat', '38443' in out(['nft', 'list', 'ruleset']), 'so-console install'),
+        # 守卫没起来时 nfu 一重生成 routes.toml，TW 分流就被冲掉且不报错 —— 值得进自检
+        ('routes 守卫 active', svc_state('soco-routes-guard.path') == 'active',
+         'so-console install'),
         ('hosts 授权域名', all(h in read_hosts() for h in LICENCE_HOSTS), 'so-console install'),
         ('10 分钟无 key 错误', journal(c['service']).count('soga key') == 0, 'so-console gate'),
         ('10 分钟无认证失败', journal(c['service']).count('auth failed') == 0, '查面板 key'),

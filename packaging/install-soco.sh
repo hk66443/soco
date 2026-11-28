@@ -38,6 +38,11 @@ CONF_DIR=/etc/soga
 UNIT_DIR=/etc/systemd/system
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 
+# 下载的临时文件统一由 trap 收：以前失败分支 exit 时会把 80 MB 的新二进制留在 /tmp
+TMP_FILES=()
+cleanup_tmp() { for f in "${TMP_FILES[@]:-}"; do [ -n "$f" ] && rm -f "$f"; done; }
+trap cleanup_tmp EXIT
+
 fetch() { # fetch <src> <dst>
     local src="$1" dst="$2"
     case "$src" in
@@ -59,7 +64,8 @@ mkdir -p "$DST_DIR" "$CONF_DIR" "$CONF_DIR/instances"
 
 # 1. 二进制
 if [[ -n "$BIN_SRC" ]]; then
-    tmp=$(mktemp); fetch "$BIN_SRC" "$tmp" || { err "获取 soco 失败: $BIN_SRC"; exit 1; }
+    tmp=$(mktemp); TMP_FILES+=("$tmp")
+    fetch "$BIN_SRC" "$tmp" || { err "获取 soco 失败: $BIN_SRC"; exit 1; }
     chmod +x "$tmp"
     "$tmp" -v >/dev/null 2>&1 || { err "新 soco 无法执行（-v 失败），可能是架构不匹配"; exit 1; }
     if [[ -x "$BIN" ]]; then cp -a "$BIN" "$BIN.bak.$(date +%Y%m%d%H%M%S)"; fi
@@ -73,7 +79,8 @@ fi
 
 # 2. 适配层
 if [[ -n "$LIB_SRC" ]]; then
-    tmp=$(mktemp); fetch "$LIB_SRC" "$tmp" || { err "获取 libsoco.so 失败: $LIB_SRC"; exit 1; }
+    tmp=$(mktemp); TMP_FILES+=("$tmp")
+    fetch "$LIB_SRC" "$tmp" || { err "获取 libsoco.so 失败: $LIB_SRC"; exit 1; }
     if [[ -f "$LIB" ]]; then cp -a "$LIB" "$LIB.bak.$(date +%Y%m%d%H%M%S)"; fi
     install -m700 "$tmp" "$LIB"; rm -f "$tmp"
     ok "已安装适配层: $LIB"

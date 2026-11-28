@@ -208,7 +208,7 @@ so-console inst remove  jp1
 | `users` | 本地 vs 面板用户数对照 |
 | `probe 3` / `probe all` / `probe N 1,50,89` | 真实握手（串行） |
 | `gate` | 600 秒闸门自检（hosts / sink / nft / key 错误） |
-| `doctor` | 全量自检（16 项，含「配置与原版模板一致」，逐项 PASS/FAIL + 修复提示） |
+| `doctor` | 全量自检（17 项，含「配置与原版模板一致」「routes 守卫 active」，逐项 PASS/FAIL + 修复提示） |
 | `verify` | 二进制指纹、unit 关键行、适配层是否加载 |
 | `routes` / `routes show` / `routes validate` | 流媒体分流**只读**查看与 TOML 校验 |
 | `conf check` / `conf show` / `conf keys` | 配置与原版模板比对（缺键则退出码 1）/ 打印 / 键名 |

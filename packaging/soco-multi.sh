@@ -22,6 +22,10 @@ INST_DIR="$CONF_DIR/instances"
 UNIT_DIR="/etc/systemd/system"
 MAIN_CONF="$CONF_DIR/soga.conf"
 TEMPLATE_UNIT="$UNIT_DIR/soco@.service"
+UPDATE_TMP=""
+
+cleanup_update_tmp() { [[ -n "${UPDATE_TMP:-}" ]] && rm -rf "$UPDATE_TMP"; }
+trap cleanup_update_tmp EXIT
 
 msg()  { echo -e "$*"; }
 ok()   { echo -e "${GREEN}$*${PLAIN}"; }
@@ -46,9 +50,10 @@ ensure_layout() {
 set_kv() { # set_kv <file> <key> <value>
     local f="$1" k="$2" v="$3"
     local esc
-    esc=$(printf '%s\n' "$v" | sed -e 's/[\/&|]/\\&/g')
+    # 替换串要转义：值里出现 & (整段匹配) 或 | (sed 分隔符) 会写坏配置
+    esc=$(printf '%s\n' "$v" | sed -e 's/[\\&|]/\\&/g')
     if grep -Eq "^[[:space:]]*${k}[[:space:]]*=" "$f"; then
-        sed -i -E "s|^[[:space:]]*${k}[[:space:]]*=.*|${k}=${v}|" "$f"
+        sed -i -E "s|^[[:space:]]*${k}[[:space:]]*=.*|${k}=${esc}|" "$f"
     else
         printf '%s=%s\n' "$k" "$v" >> "$f"
     fi
@@ -202,7 +207,10 @@ cmd_update() {
     ensure_layout
     local src="${1:-}"
     [[ -n "$src" ]] || { err "用法: soco update <本地文件|http(s)://...> [libsoco路径]"; exit 1; }
-    local tmp; tmp=$(mktemp -d)
+    # 临时目录必须收：以前只 mktemp 不删，每 update 一次就在 /tmp 留一份带二进制/私钥的目录。
+    # 用全局变量 + 顶层 EXIT trap（函数内的 trap 在函数返回后就看不到 local 变量了）
+    UPDATE_TMP=$(mktemp -d)
+    local tmp="$UPDATE_TMP"
     case "$src" in
         http://*|https://*) curl -fsSL "$src" -o "$tmp/soco" || { err "下载失败"; exit 1; } ;;
         *) cp -f "$src" "$tmp/soco" ;;
@@ -222,14 +230,52 @@ cmd_update() {
 }
 
 cmd_uninstall() {
-    warn "这会停止并禁用所有 soco 实例，删除 /usr/local/soco 与 systemd 单元；/etc/soga 配置保留。"
+    warn "这会停止并禁用所有 soco 实例 + watchdog + 授权 sink，删除 /usr/local/soco 与 systemd 单元，"
+    warn "并清掉 /etc/hosts 里本项目的 4 条授权域名与 nft 里本项目的链；/etc/soga 配置保留。"
     read -r -p "确认卸载？输入 yes: " a
     [[ "$a" == "yes" ]] || { warn "已取消"; return; }
-    systemctl disable --now soco >/dev/null 2>&1 || true
-    for n in $(names); do systemctl disable --now "soco@$n" >/dev/null 2>&1 || true; done
-    rm -f "$UNIT_DIR/soco.service" "$UNIT_DIR/soco@.service" /usr/bin/soco
+
+    # 先掐 watchdog：否则它会在 soco 停掉之后把 soco 拉回来
+    systemctl disable --now soco-watchdog 2>/dev/null || true
+    systemctl disable --now soco-routes-guard.path 2>/dev/null || true
+    systemctl disable --now soco 2>/dev/null || true
+    for n in $(names); do systemctl disable --now "soco@$n" 2>/dev/null || true; done
+    systemctl disable --now soco-licence-sink soco-sink-redirect 2>/dev/null || true
+
+    rm -f "$UNIT_DIR/soco.service" "$UNIT_DIR/soco@.service" "$UNIT_DIR/soco-watchdog.service" \
+          "$UNIT_DIR/soco-licence-sink.service" "$UNIT_DIR/soco-sink-redirect.service" \
+          "$UNIT_DIR/soco-routes-guard.service" "$UNIT_DIR/soco-routes-guard.path" \
+          /usr/bin/soco /usr/bin/soco-verify /usr/bin/soco-uninstall /usr/bin/soga-compat.sh
+    rm -f "$UNIT_DIR"/*.target.wants/soco*.service "$UNIT_DIR"/*.target.wants/soco-routes-guard.path
     rm -rf /usr/local/soco
-    systemctl daemon-reload
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl reset-failed 2>/dev/null || true
+
+    # hosts：只删本项目的授权域名（原子写回，中途被杀也不会留空文件）
+    local lh="sksjd.vaxilu.com agdfgkdfg.singledance.xyz boiudihsdfk.singledance.xyz sxp7hu5t.cilema.xyz"
+    if grep -qE "([[:space:]]|^)($(printf '%s' "$lh" | tr ' ' '|'))([[:space:]]|$)" /etc/hosts 2>/dev/null; then
+        local ht; ht=$(mktemp /etc/.hosts.XXXXXX) || ht=""
+        if [[ -n "$ht" ]]; then
+            if awk -v list="$lh" '
+                BEGIN { n = split(list, a, " "); for (i = 1; i <= n; i++) ours[a[i]] = 1 }
+                /^[[:space:]]*#/ { print; next }
+                NF >= 2 { for (i = 2; i <= NF; i++) if ($i in ours) next; print; next }
+                { print }' /etc/hosts > "$ht"; then
+                chmod --reference=/etc/hosts "$ht" 2>/dev/null || chmod 644 "$ht"
+                chown --reference=/etc/hosts "$ht" 2>/dev/null || true
+                mv -f "$ht" /etc/hosts
+            else
+                rm -f "$ht"; warn "/etc/hosts 改写失败（原文件未动）"
+            fi
+        fi
+    fi
+
+    # nft：只删本项目自己的链/表，绝不删整张 ip nat（docker/iptables-nft 的 NAT 也在这张表里）
+    if command -v nft >/dev/null 2>&1; then
+        nft delete chain ip nat redir 2>/dev/null || true
+        nft delete table ip soco_sink 2>/dev/null || true
+    fi
+
     ok "已卸载；/etc/soga 下的配置与实例目录未删除"
 }
 

@@ -28,6 +28,18 @@ die() { printf '!! %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" = "0" ] || die "请用 root 执行（安装要写 /usr/local/soco 与 systemd 单元）"
 command -v curl >/dev/null 2>&1 || die "缺 curl，先 apt install -y curl"
 command -v tar  >/dev/null 2>&1 || die "缺 tar"
+# 控制台是 python3 脚本：这里先拦一下，否则后面 exec 只会甩一句 "no such file or directory"
+command -v python3 >/dev/null 2>&1 || die "缺 python3（控制台是 python 脚本），先 apt install -y python3"
+
+# 临时目录统一由 trap 收：以前每个失败分支都要自己 rm -rf，漏一个就在 /var/tmp 里留一个解包目录
+TMP_PATHS=()
+cleanup_tmp() {
+    local d
+    for d in "${TMP_PATHS[@]:-}"; do
+        [ -n "$d" ] && rm -rf "$d"
+    done
+}
+trap cleanup_tmp EXIT
 
 # ── 1. 拉项目 ────────────────────────────────────────────────────────────
 say "== 拉取/更新 ${REPO}@${BRANCH} → ${DEST}"
@@ -39,21 +51,26 @@ else
     # 默认「拉最新并覆盖程序文件」：以前的逻辑是「DEST 里已有 console 就跳过」，
     # 结果老机器永远停在第一次装的版本，修好的补丁一条都到不了客户手里。
     # /etc 下的配置与面板参数不受影响（配置在 /etc/soga/soga.conf）。
-    say "   覆盖更新程序文件（/etc 下的配置不动；要保留本地改动可设 SO_SKIP_PULL=1）"
-    tmp="$(mktemp -d)"
-    if curl -fsSL --retry 3 --max-time 120 "$TARBALL" -o "${tmp}/so.tgz"; then
-        tar xzf "${tmp}/so.tgz" -C "$tmp"
-        src="$(find "$tmp" -maxdepth 1 -type d -name 'soco-*' | head -1)"
-        [ -n "$src" ] || die "解包后找不到项目目录"
+    # 项目包也放 /var/tmp：/tmp 常是 tmpfs（实测 482 MB），解包 + 后续写盘挤在一起容易炸
+    tmp="$(mktemp -d /var/tmp/so-src.XXXXXX 2>/dev/null || mktemp -d)"
+    TMP_PATHS+=("$tmp")
+    if curl -fsSL --retry 3 --max-time 300 "$TARBALL" -o "${tmp}/so.tgz"; then
+        say "   下载完成，覆盖更新程序文件（/etc 下的配置不动；要保留本地改动可设 SO_SKIP_PULL=1）"
+        tar xzf "${tmp}/so.tgz" -C "$tmp" || { rm -rf "$tmp"; die "项目包解包失败：${tmp}/so.tgz"; }
+        # 用 find -print -quit 而不是 `find | head -1`：后者在 pipefail 下会被 head 提前关管道
+        # 变成 SIGPIPE（find 返回 141）→ 整个脚本无提示退出
+        src="$(find "$tmp" -maxdepth 1 -type d -name 'soco-*' -print -quit)"
+        [ -n "$src" ] || { rm -rf "$tmp"; die "解包后找不到项目目录"; }
         mkdir -p "$DEST"
         # 用 tar 覆盖（保留 DEST 里多出来的文件），并**排除 install.sh 自身**：
         # 用户很可能就在 /root/so 里 `bash install.sh`，旧逻辑会在执行途中把这个文件覆盖掉，
         # bash 继续按已打开的 fd 读新内容 → 后半段行为错乱（实测：新版脚本跑出旧版行为）。
         ( cd "$src" && tar cf - --exclude='./install.sh' . ) | ( cd "$DEST" && tar xf - ) \
-            || die "复制项目到 ${DEST} 失败"
+            || { rm -rf "$tmp"; die "复制项目到 ${DEST} 失败"; }
     elif command -v git >/dev/null 2>&1; then
         say "   tarball 失败，改用 git clone（先克隆到临时目录，成功后再覆盖 ${DEST}）"
         clone_root="$(mktemp -d /var/tmp/so-clone.XXXXXX 2>/dev/null || mktemp -d)"
+        TMP_PATHS+=("$clone_root")
         if git clone --depth 1 -b "$BRANCH" "https://github.com/${REPO}.git" "${clone_root}/so"; then
             # 以前是 rm -rf "$DEST" 再 clone：clone 一失败，已经装好的目录就没了
             mkdir -p "$DEST"
@@ -100,6 +117,7 @@ elif [ "$need_bin" = "1" ]; then
    先清理：du -sh /tmp/* /root/* | sort -h | tail"
     fi
     tmpb="$(mktemp -d /var/tmp/so-bin.XXXXXX 2>/dev/null || mktemp -d)"
+    TMP_PATHS+=("$tmpb")
     tball="${tmpb}/soco-bin-${ARCH}.tar.gz"
     url="https://github.com/${REPO}/releases/download/${VER}/soco-bin-${ARCH}.tar.gz"
     if ! curl -fL --retry 3 --max-time 600 --progress-bar "$url" -o "$tball"; then
