@@ -627,7 +627,7 @@ After=soco-licence-sink.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/sh -c "nft list table ip nat >/dev/null 2>&1 || nft add table ip nat"
-ExecStart=/bin/sh -c "nft list chain ip nat redir >/dev/null 2>&1 || nft add chain ip nat redir '{{ type nat hook output priority dstnat; policy accept; }}'"
+ExecStart=/bin/sh -c "nft list chain ip nat redir >/dev/null 2>&1 || nft add chain ip nat redir '{{ type nat hook output priority 100; policy accept; }}'"
 ExecStart=/bin/sh -c "nft list chain ip nat redir | grep -q 38443 || nft add rule ip nat redir ip daddr 127.0.0.1 tcp dport 443 dnat to 127.0.0.1:38443"
 
 [Install]
@@ -1910,6 +1910,131 @@ def cmd_version(c, _a):
     return 0
 
 
+def _unit_names(c):
+    """本项目可能留下的所有单元名（含多实例）。"""
+    names = ['soco', 'soco-watchdog', 'soco-licence-sink', 'soco-sink-redirect',
+             'soco-routes-guard.path', 'soco-routes-guard.service', 'soco-mesh', 'soga']
+    try:
+        for p in Path(c['inst_dir']).glob('*.conf'):
+            if p.stem not in ('soga', 'soco'):
+                names.append('soco@%s' % p.stem)
+    except OSError:
+        pass
+    try:
+        for ln in Path('/etc/systemd/system/multi-user.target.wants').glob('soco@*.service'):
+            n = ln.name[:-len('.service')]
+            if n not in names:
+                names.append(n)
+    except OSError:
+        pass
+    return names
+
+
+def cmd_uninstall(c, a):
+    """卸载本项目：停服务 → 删单元 → 删目录/日志 → 清 hosts / nft。
+
+    默认**保留配置**（/etc/soga 里的 soga.conf / routes.toml / 证书），方便以后重装；
+    `--purge` 连配置一起删。`--yes` 用于非交互。
+    """
+    head('卸载本项目')
+    purge = bool(getattr(a, 'purge', False))
+    yes = bool(getattr(a, 'yes', False))
+    units = _unit_names(c)
+    dirs = [Path(c['bin_dir']), Path(c['pkg'])]
+    if purge:
+        dirs += [Path(c['inst_dir']), Path('/etc/soco'), Path('/etc/so')]
+    kv('将停止/删除单元', ', '.join(units))
+    kv('将删除目录', ', '.join(str(d) for d in dirs))
+    kv('配置', '删除（--purge）' if purge else '保留 %s' % c['inst_dir'])
+    kv('hosts / nft', '清理 4 条授权域名 + 本项目建的 nft 表')
+    if not yes:
+        if not sys.stdin.isatty():
+            bad('非交互卸载要显式确认：so-console uninstall --yes [--purge]')
+            return 2
+        if not confirm('确认卸载（服务会停、目录会删）？'):
+            return 0
+
+    fails = 0
+    for u in units:
+        sh(['systemctl', 'stop', u])
+        sh(['systemctl', 'disable', u])
+    for pat in ('soco*.service', 'soco*.path', 'soco*.timer', 'soga*.service'):
+        for f in Path('/etc/systemd/system').glob(pat):
+            try:
+                f.unlink()
+            except OSError as e:
+                warn('删不掉 %s：%s' % (f, e))
+                fails += 1
+    shutil.rmtree('/etc/systemd/system/soga.service.d', ignore_errors=True)
+    sh(['systemctl', 'daemon-reload'])
+    sh(['systemctl', 'reset-failed'])
+    ok('已停服务并删除单元')
+
+    # 按可执行路径杀残留（不要 pkill -f：模式串会出现在自己的命令行里）
+    killed = 0
+    for pid_dir in Path('/proc').iterdir():
+        if not pid_dir.name.isdigit():
+            continue
+        try:
+            exe = os.readlink(str(pid_dir / 'exe'))
+        except OSError:
+            continue
+        if exe.startswith(str(Path(c['bin_dir']))) or '/usr/local/soga/' in exe:
+            try:
+                os.kill(int(pid_dir.name), 9)
+                killed += 1
+            except OSError:
+                pass
+    kv('清理残留进程', '%d 个' % killed)
+
+    for d in dirs:
+        shutil.rmtree(str(d), ignore_errors=True)
+        if d.exists():
+            warn('删不掉 %s（权限？）' % d)
+            fails += 1
+    for f in ('/var/log/soco-watchdog.log', '/var/log/soco-watchdog.log.1',
+              '/usr/bin/soco', '/usr/bin/soga', '/usr/bin/soco-uninstall',
+              '/usr/bin/soco-verify', '/usr/bin/soco-multi'):
+        try:
+            Path(f).unlink(missing_ok=True)
+        except OSError:
+            pass
+    for g in ('/tmp/probe-multi-*', '/var/tmp/probe-multi-*', '/var/tmp/so-bin.*',
+              '/var/tmp/so-clone.*'):
+        for p in Path('/').glob(g.lstrip('/')):
+            shutil.rmtree(str(p), ignore_errors=True)
+    ok('已删除目录与日志')
+
+    # hosts：只删本项目加的 4 条
+    try:
+        hp = Path('/etc/hosts')
+        lines = hp.read_text(errors='replace').splitlines()
+        kept = [ln for ln in lines if not any(h in ln for h in LICENCE_HOSTS)]
+        if len(kept) != len(lines):
+            hp.write_text('\n'.join(kept) + '\n', encoding='utf-8')
+            kv('hosts', '删除 %d 条授权域名' % (len(lines) - len(kept)))
+        else:
+            kv('hosts', '无本项目条目')
+    except OSError as e:
+        warn('/etc/hosts 处理失败：%s' % e)
+        fails += 1
+
+    # nft：本项目建的表（ip nat 的 redir 链 / ip soco_sink）
+    rc, _s = sh(['nft', 'delete', 'table', 'ip', 'soco_sink'])
+    rc2, _s2 = sh(['nft', 'delete', 'table', 'ip', 'nat'])
+    kv('nft', '已尝试删除 ip soco_sink / ip nat')
+
+    left_units = [u for u in units if (Path('/etc/systemd/system') / (u + '.service')).exists()]
+    kv('剩余单元', ', '.join(left_units) or '无')
+    kv('剩余目录', ', '.join(str(d) for d in dirs if d.exists()) or '无')
+    say('')
+    if fails or left_units:
+        bad('卸载未完全成功（见上面的警告）')
+        return 1
+    ok('卸载完成%s' % ('（配置已一并删除）' if purge else '（配置保留在 %s）' % c['inst_dir']))
+    return 0
+
+
 def cmd_paths(c, _a):
     head('真实路径')
     for k in ('pkg', 'bin_dir', 'conf', 'inst_dir'):
@@ -2033,6 +2158,9 @@ MENU = [
         ('14', 'paths', '真实路径'),
         ('15', 'conf', '配置一致性（对比原版 soga 模板）'),
     ]),
+    ('卸载', [
+        ('16', 'uninstall', '卸载本项目（停服务 + 删单元/目录/端口/hosts/nft，可保留配置）'),
+    ]),
 ]
 
 
@@ -2151,6 +2279,10 @@ def build_parser():
     pbk = sub.add_parser('backup', add_help=False)
     pbk.add_argument('--keep', type=int)
 
+    pu = sub.add_parser('uninstall', add_help=False)
+    pu.add_argument('--purge', action='store_true', help='连配置（/etc/soga）一起删')
+    pu.add_argument('--yes', '-y', action='store_true', help='非交互确认')
+
     for name in ('status', 'users', 'gate', 'doctor', 'verify', 'paths', 'help', 'version'):
         sub.add_parser(name, add_help=False)
 
@@ -2174,6 +2306,7 @@ USAGE = """so-console %s · 一键部署与运维控制台
   配置：  conf check（与原版 soga 模板比对）| conf show | conf keys | conf get <键名>
   只读：  routes status | routes validate        （分流由其它程序负责）
   数据：  backup [--keep N] | rollback [--file <备份>] | paths
+  卸载：  uninstall [--purge] [--yes]      （默认保留 /etc/soga 配置；--purge 连配置一起删）
   实例：  inst list | inst new <名字> … | inst restart <名字> | inst remove <名字> [--yes]
   版本：  version | -v | --version
 
@@ -2193,7 +2326,7 @@ CMDS = {
     'users': cmd_users, 'probe': cmd_probe, 'gate': cmd_gate, 'routes': cmd_routes,
     'inst': cmd_inst, 'logs': cmd_logs, 'backup': cmd_backup, 'rollback': cmd_rollback,
     'verify': cmd_verify, 'doctor': cmd_doctor, 'paths': cmd_paths, 'conf': cmd_conf,
-    'version': cmd_version,
+    'version': cmd_version, 'uninstall': cmd_uninstall,
 }
 
 
