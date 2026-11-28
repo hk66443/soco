@@ -210,6 +210,21 @@ so-console rollback                # 列表选择；先停服，恢复后自动�
 so-console rollback /root/so-backup-20260101-120000.tar.gz
 ```
 
+### 6.1 卸载（`uninstall`）
+
+```bash
+so-console uninstall                 # 停服务 + 删单元/目录/日志/临时目录 + 清 hosts/nft，**保留** /etc/so** 配置
+so-console uninstall --purge         # 连配置（/etc/so**、/etc/soco）一起删
+so-console uninstall --yes --purge   # 非交互（脚本里必须显式给 --yes）
+```
+
+- 先停并禁用所有本项目单元（含 `soco@<实例>`），再按 `/proc/<pid>/exe` 杀残留进程
+  —— 不用 `pkill -f`：模式串会出现在自己的命令行里，把自己也杀掉；
+- 删单元文件、`bin_dir`、项目目录、watchdog 日志、`/var/tmp` 下的探针临时目录；
+- `/etc/hosts` 只删本项目加的 4 条授权域名；`ip soco_sink` / `ip nat` 两张表一并删除；
+- 默认保留 `/etc/so**`（`so**.conf` / `routes.toml` / 证书），重装可沿用；
+- 非 tty 又没给 `--yes` → rc=2，且**什么都不动**（实测：units 4→4、二进制仍在、进程 PID 未变）。
+
 ---
 
 ## 7. 交互控制台
@@ -237,6 +252,8 @@ so-console rollback /root/so-backup-20260101-120000.tar.gz
   13 rollback  从备份回滚
   14 paths     真实路径
    15 conf      配置一致性（对比原版模板）
+  ── 卸载 ─────────────────────────────
+   16 uninstall 卸载本项目（停服务 + 删单元/目录/端口/hosts/nft，可保留配置）
     0 quit     退出
 
   so> 
@@ -281,5 +298,5 @@ arch=amd64
 |---|---|
 | 0 | 成功 / 检查通过 |
 | 1 | 检查未通过或操作未达成 |
-| 2 | 参数错误 / 环境预检失败（缺命令、缺二进制、非 root） |
+| 2 | 参数错误 / 环境预检失败（缺命令、缺二进制、非 root）/ 非交互删除类操作缺 `--yes` |
 | 130 | 用户 `Ctrl-C` 取消 |
