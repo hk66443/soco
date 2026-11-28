@@ -62,10 +62,22 @@ else
         src="$(find "$tmp" -maxdepth 1 -type d -name 'soco-*' -print -quit)"
         [ -n "$src" ] || { rm -rf "$tmp"; die "解包后找不到项目目录"; }
         mkdir -p "$DEST"
-        # 用 tar 覆盖（保留 DEST 里多出来的文件），并**排除 install.sh 自身**：
-        # 用户很可能就在 /root/so 里 `bash install.sh`，旧逻辑会在执行途中把这个文件覆盖掉，
-        # bash 继续按已打开的 fd 读新内容 → 后半段行为错乱（实测：新版脚本跑出旧版行为）。
-        ( cd "$src" && tar cf - --exclude='./install.sh' . ) | ( cd "$DEST" && tar xf - ) \
+        # 用 tar 覆盖（保留 DEST 里多出来的文件）。install.sh 自身只在**可能被自己覆盖**时排除：
+        # 用户就在 /root/so 里 `bash install.sh` 时，执行途中覆盖这个文件会让 bash 按已打开的 fd
+        # 读新内容 → 后半段行为错乱（实测：新版脚本跑出旧版行为）。但 `bash <(curl …)` 跑的是
+        # /dev/fd/63，不属于这种情况 —— 一律排除会让机器上永远留着第一次装的那份旧 install.sh
+        # （实测就是这样：pull 完 /root/so/install.sh 还是上一轮的 hash）。
+        cur=""
+        case "$0" in
+            */*) cur="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")" ;;
+        esac
+        tar_excl=""
+        if [ -n "$cur" ] && [ -f "${DEST}/install.sh" ] \
+           && [ "$(readlink -f "$cur" 2>/dev/null)" = "$(readlink -f "${DEST}/install.sh" 2>/dev/null)" ]; then
+            tar_excl="--exclude=./install.sh"
+            say "   （正在执行 ${DEST}/install.sh：跳过覆盖它自己）"
+        fi
+        ( cd "$src" && tar cf - ${tar_excl:-} . ) | ( cd "$DEST" && tar xf - ) \
             || { rm -rf "$tmp"; die "复制项目到 ${DEST} 失败"; }
     elif command -v git >/dev/null 2>&1; then
         say "   tarball 失败，改用 git clone（先克隆到临时目录，成功后再覆盖 ${DEST}）"
@@ -74,7 +86,7 @@ else
         if git clone --depth 1 -b "$BRANCH" "https://github.com/${REPO}.git" "${clone_root}/so"; then
             # 以前是 rm -rf "$DEST" 再 clone：clone 一失败，已经装好的目录就没了
             mkdir -p "$DEST"
-            ( cd "${clone_root}/so" && tar cf - --exclude='./.git' --exclude='./install.sh' . ) \
+            ( cd "${clone_root}/so" && tar cf - --exclude='./.git' ${tar_excl:-} . ) \
                 | ( cd "$DEST" && tar xf - ) || { rm -rf "$clone_root"; die "复制项目到 ${DEST} 失败"; }
             rm -rf "$clone_root"
         else
