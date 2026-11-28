@@ -7,6 +7,8 @@
 import base64
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -22,7 +24,8 @@ SBOX = Path('/usr/local/soco/sing-box-probe')
 # 目录放 /var/tmp（根分区）而不是 /tmp：/tmp 常是 tmpfs，写满时 sing-box 配置写不进去，
 # 表现为 `OSError: [Errno 28] No space left on device`（AMD 上实测过，tmpfs 只有 482 MB）。
 WORK = Path('/var/tmp/probe-multi-%d' % os.getpid())
-PORT_BASE = 13000 + (os.getpid() % 1000)
+PORT_BASE = 13000 + (os.getpid() % 1000) * 2      # 每个 idx 占 2 个号，跨 pid 段不重叠
+PORT_SPAN = 400
 TRACE = 'https://www.cloudflare.com/cdn-cgi/trace'
 
 
@@ -56,6 +59,39 @@ def panel(conf, what):
                          % out.stdout[:160].replace('\n', ' '))
 
 
+def pick_port(start):
+    """从 start 往后找一个现在能 bind 的空闲端口。
+
+    以前用「PORT_BASE + i」：两个 probe 同时跑时 pid%1000 只差几个号，端口段直接重叠，
+    表现为随机 FAIL（端口被别人的 sing-box 占着）。逐个 bind 试最省事。
+    """
+    for p in range(start, start + PORT_SPAN):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(('127.0.0.1', p))
+            return p
+        except OSError:
+            continue
+        finally:
+            s.close()
+    return None
+
+
+def wait_port(port, timeout=6.0):
+    """等 sing-box 的 socks 入口真的开始监听（以前是死等 2 s，机器忙时不够、闲时白等）。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.settimeout(0.3)
+            if s.connect_ex(('127.0.0.1', port)) == 0:
+                return True
+        finally:
+            s.close()
+        time.sleep(0.1)
+    return False
+
+
 def build_cfg(conf, node, user, port):
     stype = conf.get('server_type', 'vless')
     if stype == 'ss':
@@ -69,6 +105,9 @@ def build_cfg(conf, node, user, port):
                'server_port': int(node['server_port']), 'method': node['cipher'],
                'password': node['server_key'] + ':' + uk, 'network': 'tcp'}
     else:
+        # 以前这里直接 user['uuid']：面板某个用户缺 uuid 时抛 KeyError，整轮探针留一堆 traceback
+        if not user.get('uuid'):
+            raise SystemExit('面板用户缺少 uuid（%s 需要）；查面板用户表' % stype)
         tls = node.get('tls_settings') or {}
         if not tls.get('public_key'):
             # REALITY 必须要有 public_key；面板没配好时以前会生成非法配置 → sing-box 起不来 → 全 FAIL
@@ -127,41 +166,63 @@ def main():
           % (n, len(idxs), conf.get('server_type'), CONF))
     ok = 0
     fails = []
-    for i, ix in enumerate(idxs):
-        user = users[ix]
-        port = PORT_BASE + i
-        p = WORK / ('%d.json' % i)
-        p.write_text(json.dumps(build_cfg(conf, cfg, user, port)))
-        try:
-            p.chmod(0o600)      # 配置里有 server_key + uuid，别让同机其它用户读到
-        except OSError:
-            pass
-        proc = subprocess.Popen([str(SBOX), 'run', '-c', str(p)],
-                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
-        time.sleep(2.0)
-        r = subprocess.run(['curl', '-sS', '-x', 'socks5h://127.0.0.1:%d' % port,
-                            '--max-time', '12', TRACE], capture_output=True, text=True)
-        good = r.returncode == 0 and 'ip=' in r.stdout
-        if good:
-            ok += 1
-        else:
-            fails.append((ix + 1, user['uuid'][:8], r.returncode, r.stderr.strip()[:60]))
-        print('  idx=%-4d id=%-6s uuid=%s %s' % (ix + 1, user.get('id', '?'), user['uuid'][:8],
-                                                 'OK' if good else 'FAIL'))
-        proc.terminate()
-        try:
-            proc.wait(timeout=4)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        time.sleep(0.3)
+    procs = []
+    try:
+        for i, ix in enumerate(idxs):
+            user = users[ix]
+            uid = str(user.get('uuid') or '')
+            if not uid:
+                print('  idx=%-4d 面板用户缺 uuid，跳过' % (ix + 1))
+                fails.append((ix + 1, '-', -1, 'missing uuid'))
+                continue
+            port = pick_port(PORT_BASE + i * 2)
+            if port is None:
+                print('  idx=%-4d 端口段被占满（%d–%d），跳过' % (ix + 1, PORT_BASE, PORT_BASE + PORT_SPAN))
+                fails.append((ix + 1, uid[:8], -1, 'no free port'))
+                continue
+            p = WORK / ('%d.json' % i)
+            p.write_text(json.dumps(build_cfg(conf, cfg, user, port)), encoding='utf-8')
+            try:
+                p.chmod(0o600)      # 配置里有 server_key + uuid，别让同机其它用户读到
+            except OSError:
+                pass
+            proc = subprocess.Popen([str(SBOX), 'run', '-c', str(p)],
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            procs.append(proc)
+            wait_port(port)          # 等它真的起来；起不来就直接判 FAIL，不再盲等固定 2 s
+            r = subprocess.run(['curl', '-sS', '-x', 'socks5h://127.0.0.1:%d' % port,
+                                '--max-time', '12', TRACE], capture_output=True, text=True)
+            good = r.returncode == 0 and 'ip=' in r.stdout
+            if good:
+                ok += 1
+            else:
+                fails.append((ix + 1, uid[:8], r.returncode, r.stderr.strip()[:60]))
+            print('  idx=%-4d id=%-6s uuid=%s %s' % (ix + 1, user.get('id', '?'), uid[:8],
+                                                     'OK' if good else 'FAIL'))
+            procs.remove(proc)
+            proc.terminate()
+            try:
+                proc.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            time.sleep(0.2)
+    finally:
+        # 不管是 SystemExit（配置非法）还是 Ctrl-C，都不能留下 sing-box 或带密钥的临时目录
+        for proc in procs:
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        shutil.rmtree(WORK, ignore_errors=True)
     print('TOTAL ok=%d/%d' % (ok, len(idxs)))
     for f in fails:
         print('  FAIL %s' % (f,))
-    # 每次都留下 /tmp/probe-multi-<pid>/ 会越攒越多（每个几十 KB），跑完就清
-    import shutil
-    shutil.rmtree(WORK, ignore_errors=True)
-    return 0 if ok == len(idxs) else 1
+    return 0 if ok == len(idxs) and not fails else 1
 
 
 if __name__ == '__main__':

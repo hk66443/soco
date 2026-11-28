@@ -1905,9 +1905,6 @@ def cmd_doctor(c, _a):
         ('配置与原版模板一致', not miss, 'so-console install（conf check 看差异）'),
         ('配置 log_level（error/info）', level_of(c['conf']) in LOG_LEVELS,
          'so-console install --log-level error|info'),
-        ('本地人数可读（info 时）',
-         level_of(c['conf']) != 'info' or last_user_num(c['service']) != '-',
-         '刚重启？等一个 check_interval（60 s）再看'),
         ('主服务 active', svc_state(c['service']) == 'active', 'so-console service start'),
         ('业务端口监听', bool(det_port(c)) and ':' + det_port(c) in out(['ss', '-lnt']), '看配置/日志'),
         ('sink active', svc_state('soco-licence-sink') == 'active', 'so-console install'),
@@ -1926,6 +1923,9 @@ def cmd_doctor(c, _a):
         print('  %s %-26s %s' % (col(G, '✔') if good else col(R, '✘'), name, '' if good else col(D, hint)))
         fails += 0 if good else 1
     unum, usrc = last_user_num(c['service'], with_src=True)
+    if level_of(c['conf']) == 'info' and unum == '-':
+        # 刚重启后 60 s 内必然还没有 INFO 行：这是等待，不是故障，别记成 FAIL
+        warn('log_level=info 已开，但最近还没有 INFO 行（刚重启？）——等一个 check_interval（60 s）再看')
     if unum == '-':
         warn('本地人数不可读：%s' % usrc)
     elif usrc.endswith('（实时）'):
@@ -1963,6 +1963,44 @@ def _unit_names(c):
     return names
 
 
+def nft_uninstall_cmds():
+    """卸载时的 nft 清理命令：**只删本项目自己的东西**。
+
+    ⚠ 只删 `ip nat` 表里我们加的 `redir` 链，**绝对不删整张 `ip nat` 表**：
+    docker / iptables-nft / 防火墙也用这张表，早期版本在这里 `delete table ip nat`，
+    会把同机别的 NAT 规则一起清空（客户机器上等于把容器网络打断）。
+    """
+    return [['nft', 'delete', 'chain', 'ip', 'nat', 'redir'],
+            ['nft', 'delete', 'table', 'ip', 'soco_sink']]
+
+
+def strip_hosts_lines(path, hosts):
+    """删掉 hosts 里本项目加的授权域名行，**原子写回**，返回删除条数。
+
+    - 只匹配「注释去掉后最后一个字段是这些域名」的行，避免误删注释里偶然出现的域名；
+    - 先写临时文件再 os.replace：中途被杀不会留下半截 /etc/hosts（那是 DNS 全挂）。
+    """
+    p = Path(path)
+    lines = p.read_text(errors='replace').splitlines()
+    kept, removed = [], 0
+    for ln in lines:
+        body = ln.split('#', 1)[0].strip()
+        fields = body.split()
+        if fields and fields[-1] in hosts:
+            removed += 1
+            continue
+        kept.append(ln)
+    if removed:
+        tmp = p.with_name(p.name + '.so-tmp')
+        tmp.write_text('\n'.join(kept) + '\n', encoding='utf-8')
+        try:
+            os.chmod(tmp, p.stat().st_mode & 0o7777)
+        except OSError:
+            pass
+        os.replace(str(tmp), str(p))
+    return removed
+
+
 def cmd_uninstall(c, a):
     """卸载本项目：停服务 → 删单元 → 删目录/日志 → 清 hosts / nft。
 
@@ -1979,7 +2017,7 @@ def cmd_uninstall(c, a):
     kv('将停止/删除单元', ', '.join(units))
     kv('将删除目录', ', '.join(str(d) for d in dirs))
     kv('配置', '删除（--purge）' if purge else '保留 %s' % c['inst_dir'])
-    kv('hosts / nft', '清理 4 条授权域名 + 本项目建的 nft 表')
+    kv('hosts / nft', '清理 4 条授权域名 + 本项目建的 nft 链（不删整张 ip nat 表）')
     if not yes:
         if not sys.stdin.isatty():
             bad('非交互卸载要显式确认：so-console uninstall --yes [--purge]')
@@ -1988,7 +2026,13 @@ def cmd_uninstall(c, a):
             return 0
 
     fails = 0
-    for u in units:
+    # 只 stop/disable 真正存在的单元：以前把 _unit_names() 里猜的名字全喂给 systemctl，
+    # 不存在的单元会刷一屏 "Unit xxx.service not loaded"，看着像卸载失败
+    us_dir = Path('/etc/systemd/system')
+    wants = us_dir / 'multi-user.target.wants'
+    present = [u for u in units
+               if (us_dir / (u + '.service')).exists() or (wants / (u + '.service')).exists()]
+    for u in present:
         sh(['systemctl', 'stop', u])
         sh(['systemctl', 'disable', u])
     for pat in ('soco*.service', 'soco*.path', 'soco*.timer', 'soga*.service'):
@@ -2038,24 +2082,20 @@ def cmd_uninstall(c, a):
             shutil.rmtree(str(p), ignore_errors=True)
     ok('已删除目录与日志')
 
-    # hosts：只删本项目加的 4 条
+    # hosts：只删本项目加的 4 条（原子写回，见 strip_hosts_lines 的说明）
     try:
-        hp = Path('/etc/hosts')
-        lines = hp.read_text(errors='replace').splitlines()
-        kept = [ln for ln in lines if not any(h in ln for h in LICENCE_HOSTS)]
-        if len(kept) != len(lines):
-            hp.write_text('\n'.join(kept) + '\n', encoding='utf-8')
-            kv('hosts', '删除 %d 条授权域名' % (len(lines) - len(kept)))
-        else:
-            kv('hosts', '无本项目条目')
+        removed = strip_hosts_lines('/etc/hosts', LICENCE_HOSTS)
+        kv('hosts', '删除 %d 条授权域名' % removed if removed else '无本项目条目')
     except OSError as e:
         warn('/etc/hosts 处理失败：%s' % e)
         fails += 1
 
-    # nft：本项目建的表（ip nat 的 redir 链 / ip soco_sink）
-    rc, _s = sh(['nft', 'delete', 'table', 'ip', 'soco_sink'])
-    rc2, _s2 = sh(['nft', 'delete', 'table', 'ip', 'nat'])
-    kv('nft', '已尝试删除 ip soco_sink / ip nat')
+    # nft：只删本项目自己的链/遗留表，**ip nat 表本身保留**（docker/iptables 也用这张表）
+    for cmd in nft_uninstall_cmds():
+        sh(cmd)
+    if 'redir' in out(['nft', 'list', 'chain', 'ip', 'nat', 'redir']):
+        warn('nft 链 ip nat redir 还在（可能被别的组件按同名重建了，手工确认下）')
+    kv('nft', '已删本项目链 ip nat redir / 遗留表 ip soco_sink（ip nat 表保留）')
 
     left_units = [u for u in units if (Path('/etc/systemd/system') / (u + '.service')).exists()]
     kv('剩余单元', ', '.join(left_units) or '无')

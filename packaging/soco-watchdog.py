@@ -155,7 +155,15 @@ def restart(reason, extra=None):
     if extra:
         rec.update(extra)
     log(rec)
-    subprocess.run(['systemctl', 'restart', SERVICE], capture_output=True, timeout=90)
+    rc = -1
+    try:
+        rc = subprocess.run(['systemctl', 'restart', SERVICE],
+                            capture_output=True, timeout=90).returncode
+    except Exception as e:               # systemctl 超时/不存在：不要让 watchdog 自己崩掉
+        log({'event': 'restart_error', 'reason': reason,
+             'type': type(e).__name__, 'message': str(e)[:120]})
+    if rc != 0:
+        log({'event': 'restart_failed', 'reason': reason, 'rc': rc})
     time.sleep(25)
 
 
@@ -302,7 +310,9 @@ def main():
                 if storm:
                     log({'event': 'storm_cleared', 'restarts_before': restarts})
                     storm = False
-                    restarts = 0
+                # 成功一次就清零：以前只在 storm 时清零，几小时前那 1–4 次会一直累加，
+                # 下一次连续失败很快就撞到 STORM_LIMIT → 该重启时反而不重启了
+                restarts = 0
                 fails = 0
             else:
                 fails += 1
